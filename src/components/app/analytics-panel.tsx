@@ -1,87 +1,107 @@
 'use client';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import { BarChart, Grid3x3 } from 'lucide-react';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart';
-import { Bar, BarChart as RechartsBarChart, XAxis, YAxis } from 'recharts';
 import { SidebarGroup, SidebarGroupLabel } from '../ui/sidebar';
 
-const chartData = [
-  { month: 'January', desktop: 186 },
-  { month: 'February', desktop: 305 },
-  { month: 'March', desktop: 237 },
-  { month: 'April', desktop: 73 },
-  { month: 'May', desktop: 209 },
-  { month: 'June', desktop: 214 },
-];
+export function AnalyticsPanel({ pixelData }: { pixelData: any }) {
+  const gridSize = 5;
+  const cellSize = 16; // 1rem
 
-const chartConfig = {
-  desktop: {
-    label: 'Pixels',
-    color: 'hsl(var(--primary))',
-  },
-};
+  const renderPixelGrid = () => {
+    if (!pixelData?.pixelGrid) {
+      return (
+        <div
+          className="flex items-center justify-center bg-secondary"
+          style={{
+            width: `${gridSize * cellSize}px`,
+            height: `${gridSize * cellSize}px`,
+          }}
+        >
+          <p className="text-xs text-muted-foreground text-center">
+            Hover over image
+          </p>
+        </div>
+      );
+    }
 
-export function AnalyticsPanel() {
+    const { data, width, height } = pixelData.pixelGrid;
+    const grid = [];
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const isCenter =
+          x === Math.floor(width / 2) && y === Math.floor(height / 2);
+
+        grid.push(
+          <div
+            key={`${y}-${x}`}
+            className={`flex items-center justify-center ${
+              isCenter ? 'ring-2 ring-inset ring-white' : ''
+            }`}
+            style={{
+              backgroundColor: `rgb(${r}, ${g}, ${b})`,
+              width: `${cellSize}px`,
+              height: `${cellSize}px`,
+            }}
+          />
+        );
+      }
+    }
+    return (
+      <div
+        className="grid overflow-hidden rounded-md border"
+        style={{
+          gridTemplateColumns: `repeat(${width}, 1fr)`,
+          width: `${width * cellSize}px`,
+          height: `${height * cellSize}px`,
+        }}
+      >
+        {grid}
+      </div>
+    );
+  };
+
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="font-headline">
-        Visual Analytics
-      </SidebarGroupLabel>
-      <div className="p-2">
-        <Tabs defaultValue="histogram">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="histogram">
-              <BarChart className="mr-2" />
-              Histogram
-            </TabsTrigger>
-            <TabsTrigger value="pixel-grid">
-              <Grid3x3 className="mr-2" />
-              Pixel Grid
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="histogram" className="mt-4">
-            <ChartContainer config={chartConfig} className="min-h-[120px] w-full">
-              <RechartsBarChart accessibilityLayer data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickFormatter={(value) => value.slice(0, 3)}
-                />
-                <YAxis tickLine={false} axisLine={false} />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent hideLabel />}
-                />
-                <Bar dataKey="desktop" fill="var(--color-desktop)" radius={2} />
-              </RechartsBarChart>
-            </ChartContainer>
-          </TabsContent>
-          <TabsContent value="pixel-grid" className="mt-4">
-            <div className="flex h-[150px] items-center justify-center rounded-lg border border-dashed bg-secondary text-center">
-              <p className="text-muted-foreground">
-                Pixel Grid view.
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+      <SidebarGroupLabel className="font-headline">Inspector</SidebarGroupLabel>
+      <div className="p-2 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-medium text-sm">Pixel Grid</h3>
+            <p className="text-xs text-muted-foreground">
+              Zoomed view of pixels around the cursor.
+            </p>
+          </div>
+          {renderPixelGrid()}
+        </div>
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Coords:</span>
+            <span className="font-mono">
+              {pixelData ? `${pixelData.coords.x}, ${pixelData.coords.y}` : 'N/A'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">RGB:</span>
+            <span className="font-mono">
+              {pixelData?.color?.rgb.join(', ') || 'N/A'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">HSV:</span>
+            <span className="font-mono">
+              {pixelData?.color?.hsv.join(', ') || 'N/A'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">LAB:</span>
+            <span className="font-mono">
+              {pixelData?.color?.lab.join(', ') || 'N/A'}
+            </span>
+          </div>
+        </div>
       </div>
     </SidebarGroup>
   );

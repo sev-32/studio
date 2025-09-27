@@ -29,6 +29,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { ScrollArea } from '../ui/scroll-area';
 import { Eye, EyeOff, Plus, Trash2, MinusCircle } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
+import { AnalyticsPanel } from './analytics-panel';
 
 interface RightSidebarProps {
   activeTool: Tool;
@@ -44,6 +45,7 @@ interface RightSidebarProps {
   layers: Layer[];
   setLayers: Dispatch<SetStateAction<Layer[]>>;
   onCopyToLayer: () => void;
+  hoveredPixelData: any;
 }
 
 export function RightSidebar({
@@ -60,14 +62,17 @@ export function RightSidebar({
   layers,
   setLayers,
   onCopyToLayer,
+  hoveredPixelData,
 }: RightSidebarProps) {
   return (
     <SidebarContent>
-      <LayersPanel 
+      <LayersPanel
         segmentGroups={segmentGroups}
         setSegmentGroups={setSegmentGroups}
         addNewGroup={addNewGroup}
       />
+      <SidebarSeparator />
+      <AnalyticsPanel pixelData={hoveredPixelData} />
       <SidebarSeparator />
 
       {activeTool !== 'layers' && (
@@ -109,48 +114,62 @@ export function RightSidebar({
 function LayersPanel({
   segmentGroups,
   setSegmentGroups,
-  addNewGroup
+  addNewGroup,
 }: {
   segmentGroups: SegmentGroup[];
   setSegmentGroups: Dispatch<SetStateAction<SegmentGroup[]>>;
   addNewGroup: (type: 'add' | 'avoid') => void;
 }) {
-
   const toggleVisibility = (id: string) => {
     setSegmentGroups(
-      segmentGroups.map((g) => (g.id === id ? { ...g, visible: !g.visible } : g))
+      segmentGroups.map((g) =>
+        g.id === id ? { ...g, visible: !g.visible } : g
+      )
     );
   };
 
   const deleteGroup = (id: string) => {
-      setSegmentGroups(segmentGroups.filter(g => g.id !== id));
-  }
+    setSegmentGroups(segmentGroups.filter((g) => g.id !== id));
+  };
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="font-headline">Layers & Segments</SidebarGroupLabel>
+      <SidebarGroupLabel className="font-headline">
+        Layers & Segments
+      </SidebarGroupLabel>
       <div className="p-2 space-y-2">
-        <div className='flex gap-2'>
-            <Button className="w-full" size="sm" onClick={() => addNewGroup('add')}>
-                <Plus className='mr-2'/> New Add Group
-            </Button>
-            <Button className="w-full" size="sm" variant="destructive" onClick={() => addNewGroup('avoid')}>
-                <MinusCircle className='mr-2' /> New Avoid Group
-            </Button>
+        <div className="flex gap-2">
+          <Button
+            className="w-full"
+            size="sm"
+            onClick={() => addNewGroup('add')}
+          >
+            <Plus className="mr-2" /> New Add Group
+          </Button>
+          <Button
+            className="w-full"
+            size="sm"
+            variant="destructive"
+            onClick={() => addNewGroup('avoid')}
+          >
+            <MinusCircle className="mr-2" /> New Avoid Group
+          </Button>
         </div>
         <ScrollArea className="h-48">
           <div className="space-y-2">
             {segmentGroups.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">No segment groups yet.</p>
+              <p className="text-xs text-muted-foreground text-center py-4">
+                No segment groups yet.
+              </p>
             )}
             {segmentGroups.map((group) => (
               <div
                 key={group.id}
                 className="flex items-center justify-between p-2 rounded-md bg-secondary"
               >
-                <div 
-                    className='w-4 h-4 rounded-full mr-2'
-                    style={{backgroundColor: group.color}}
+                <div
+                  className="w-4 h-4 rounded-full mr-2"
+                  style={{ backgroundColor: group.color }}
                 />
                 <span className="text-sm flex-1">{group.name}</span>
                 <Button
@@ -171,7 +190,7 @@ function LayersPanel({
                   className="h-7 w-7"
                   onClick={() => deleteGroup(group.id)}
                 >
-                    <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             ))}
@@ -237,25 +256,30 @@ function MagicWandSettingsComponent({
           />
         </div>
         <div className="space-y-3">
-          <Label
-            className={disabled ? 'text-muted-foreground' : ''}
-          >
+          <Label className={disabled ? 'text-muted-foreground' : ''}>
             Color Space
           </Label>
           <ToggleGroup
             type="multiple"
             value={settings.colorSpaces}
             onValueChange={(value) => {
-              if (value.length > 0) { // Must have at least one selected
-                setSettings((s) => ({...s, colorSpaces: value}));
+              if (value.length > 0) {
+                // Must have at least one selected
+                setSettings((s) => ({ ...s, colorSpaces: value }));
               }
             }}
             disabled={disabled}
             className="grid grid-cols-3 gap-2"
           >
-            <ToggleGroupItem value="rgb" aria-label="Toggle RGB">RGB</ToggleGroupItem>
-            <ToggleGroupItem value="hsv" aria-label="Toggle HSV">HSV</ToggleGroupItem>
-            <ToggleGroupItem value="lab" aria-label="Toggle LAB">LAB</ToggleGroupItem>
+            <ToggleGroupItem value="rgb" aria-label="Toggle RGB">
+              RGB
+            </ToggleGroupItem>
+            <ToggleGroupItem value="hsv" aria-label="Toggle HSV">
+              HSV
+            </ToggleGroupItem>
+            <ToggleGroupItem value="lab" aria-label="Toggle LAB">
+              LAB
+            </ToggleGroupItem>
           </ToggleGroup>
         </div>
       </div>
