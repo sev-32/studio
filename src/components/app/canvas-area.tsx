@@ -94,11 +94,11 @@ export function CanvasArea({
           return;
       };
 
-      if (points.length === 0 && avoid.length === 0) {
+      if (points.length === 0 && avoid.length === 0 && !lastMousePosition) {
         clearCanvas(targetCanvas);
         return;
       }
-
+      
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       if (!tempCtx) return;
@@ -284,7 +284,7 @@ export function CanvasArea({
         }
       }
     },
-    [toast]
+    [toast, lastMousePosition]
   );
   
   const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
@@ -327,18 +327,33 @@ export function CanvasArea({
   }
 
   const runPreview = useCallback(() => {
-    if (activeTool !== 'wand' || !previewCanvasRef.current) return;
-    
-    const pointsToUse = seedPoints.length > 0 ? seedPoints : (lastMousePosition ? [{...lastMousePosition, tolerance: wandSettings.tolerance}] : []);
-    
+    if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) {
+      clearCanvas(previewCanvasRef.current);
+      return;
+    }
+  
+    const hoverPoint: SeedPoint = {
+      ...lastMousePosition,
+      tolerance: wandSettings.tolerance,
+    };
+  
+    // Always include the hover point for the preview.
+    const pointsToUse = [...seedPoints, hoverPoint];
+  
     performMagicWand(
       previewCanvasRef.current,
       pointsToUse,
       wandSettings,
-      avoidancePoints,
+      avoidancePoints
     );
-
-  }, [activeTool, wandSettings, avoidancePoints, seedPoints, lastMousePosition, performMagicWand]);
+  }, [
+    activeTool,
+    wandSettings,
+    avoidancePoints,
+    seedPoints,
+    lastMousePosition,
+    performMagicWand,
+  ]);
 
   useEffect(() => {
     runPreview();
@@ -396,17 +411,16 @@ export function CanvasArea({
       });
       toast({ title: 'Seed point added.' });
     } else {
-      clearCanvas(selectionCanvasRef.current);
-      setAvoidancePoints([]);
       setSeedPoints(() => {
           const newPoints = [{ ...coords, tolerance: wandSettings.tolerance }];
           setLastClickedPoint({ type: 'seed', index: 0 });
           return newPoints;
       });
+      setAvoidancePoints([]);
     }
     
     if (selectionCanvasRef.current) {
-         performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
+        performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
     }
   };
   
@@ -569,3 +583,5 @@ export function CanvasArea({
     </Card>
   );
 }
+
+    
