@@ -94,7 +94,11 @@ export function CanvasArea({
           return;
       };
 
-      if (points.length === 0 && avoid.length === 0 && !lastMousePosition) {
+      const pointsForPreview = lastMousePosition && activeTool === 'wand' 
+        ? [...points, { ...lastMousePosition, tolerance: settings.tolerance }] 
+        : points;
+
+      if (pointsForPreview.length === 0 && avoid.length === 0) {
         clearCanvas(targetCanvas);
         return;
       }
@@ -160,7 +164,7 @@ export function CanvasArea({
         const queue: [number, number][] = [];
         const startColors: {color: number[], tolerance: number}[] = [];
 
-        points.forEach(point => {
+        pointsForPreview.forEach(point => {
           const { x: startX, y: startY } = point;
           const startIdx = (startY * naturalWidth + startX) * 4;
           const r = imageData[startIdx];
@@ -190,10 +194,10 @@ export function CanvasArea({
             const g = imageData[dataIndex + 1];
             const b = imageData[dataIndex + 2];
             const pixelColor = convertColor(r, g, b);
-
+            
             let isAvoided = false;
             for (const avoidPoint of avoid) {
-                const avoidColor = colorConverters.rgbToLab(avoidPoint.color[0], avoidPoint.color[1], avoidPoint.color[2]);
+                const avoidColor = convertColor(avoidPoint.color[0], avoidPoint.color[1], avoidPoint.color[2]);
                 const dist = getDistance(pixelColor, avoidColor, avoidPoint.colorSpace);
                 if (dist <= avoidPoint.tolerance) {
                     isAvoided = true;
@@ -235,7 +239,7 @@ export function CanvasArea({
             }
         };
 
-        if (contiguous && points.length > 0) {
+        if (contiguous && pointsForPreview.length > 0) {
             let head = 0;
             while (head < queue.length) {
                 const [x, y] = queue[head++]!;
@@ -284,7 +288,7 @@ export function CanvasArea({
         }
       }
     },
-    [toast, lastMousePosition]
+    [toast, lastMousePosition, activeTool]
   );
   
   const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
@@ -327,22 +331,14 @@ export function CanvasArea({
   }
 
   const runPreview = useCallback(() => {
-    if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) {
+    if (activeTool !== 'wand' || !previewCanvasRef.current) {
       clearCanvas(previewCanvasRef.current);
       return;
     }
   
-    const hoverPoint: SeedPoint = {
-      ...lastMousePosition,
-      tolerance: wandSettings.tolerance,
-    };
-  
-    // Always include the hover point for the preview.
-    const pointsToUse = [...seedPoints, hoverPoint];
-  
     performMagicWand(
       previewCanvasRef.current,
-      pointsToUse,
+      seedPoints,
       wandSettings,
       avoidancePoints
     );
@@ -351,13 +347,12 @@ export function CanvasArea({
     wandSettings,
     avoidancePoints,
     seedPoints,
-    lastMousePosition,
     performMagicWand,
   ]);
 
   useEffect(() => {
     runPreview();
-  }, [wandSettings, avoidancePoints, seedPoints, lastMousePosition, runPreview]);
+  }, [lastMousePosition, runPreview]);
 
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
@@ -418,44 +413,48 @@ export function CanvasArea({
       });
       setAvoidancePoints([]);
     }
-    
-    if (selectionCanvasRef.current) {
-        performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
-    }
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
     event.preventDefault(); 
+    
+    if (!lastClickedPoint) {
+      const change = event.deltaY < 0 ? 1 : -1;
+      setWandSettings(prevSettings => {
+          const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
+          if (newTolerance === prevSettings.tolerance) return prevSettings;
+          return { ...prevSettings, tolerance: newTolerance };
+      });
+      return;
+    }
 
     const change = event.deltaY < 0 ? 1 : -1;
     
-    if (lastClickedPoint) {
-       if (lastClickedPoint.type === 'seed') {
-           setSeedPoints(prev => {
-               const newPoints = [...prev];
-               const pointToUpdate = newPoints[lastClickedPoint.index];
-               if (pointToUpdate) {
-                   pointToUpdate.tolerance = Math.max(0, Math.min(255, pointToUpdate.tolerance + change));
-               }
-               return newPoints;
-           });
-       } else if (lastClickedPoint.type === 'avoid') {
-           setAvoidancePoints(prev => {
-               const newPoints = [...prev];
-               const pointToUpdate = newPoints[lastClickedPoint.index];
-               if (pointToUpdate) {
-                   pointToUpdate.tolerance = Math.max(0, Math.min(255, pointToUpdate.tolerance + change));
-               }
-               return newPoints;
-           });
-       }
-    } else {
-        setWandSettings(prevSettings => {
-            const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
-            if (newTolerance === prevSettings.tolerance) return prevSettings;
-            return { ...prevSettings, tolerance: newTolerance };
-        });
+    if (lastClickedPoint.type === 'seed') {
+        setSeedPoints(prev =>
+            prev.map((point, index) => {
+                if (index === lastClickedPoint.index) {
+                    return {
+                        ...point,
+                        tolerance: Math.max(0, Math.min(255, point.tolerance + change)),
+                    };
+                }
+                return point;
+            })
+        );
+    } else if (lastClickedPoint.type === 'avoid') {
+        setAvoidancePoints(prev =>
+            prev.map((point, index) => {
+                if (index === lastClickedPoint.index) {
+                    return {
+                        ...point,
+                        tolerance: Math.max(0, Math.min(255, point.tolerance + change)),
+                    };
+                }
+                return point;
+            })
+        );
     }
   };
 
@@ -499,14 +498,22 @@ export function CanvasArea({
     const imageEl = imageRef.current;
     if (!imageEl) return;
     
+    const handleLoad = () => setCanvasSize();
+    imageEl.addEventListener('load', handleLoad);
+
     const resizeObserver = new ResizeObserver(() => setCanvasSize());
     if (imageEl.parentElement) {
       resizeObserver.observe(imageEl.parentElement);
     }
+
+    if (imageEl.complete) {
+        setCanvasSize();
+    }
     
-    if (imageEl.complete) setCanvasSize();
-    
-    return () => resizeObserver.disconnect();
+    return () => {
+        imageEl.removeEventListener('load', handleLoad);
+        resizeObserver.disconnect();
+    }
   }, [setCanvasSize]);
 
   useEffect(() => {
@@ -566,7 +573,6 @@ export function CanvasArea({
             data-ai-hint={currentImage.imageHint}
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             crossOrigin="anonymous"
-            onLoad={setCanvasSize}
           />
           <canvas
             ref={selectionCanvasRef}
