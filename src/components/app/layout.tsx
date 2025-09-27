@@ -41,6 +41,8 @@ export function AppLayout() {
               <CanvasArea
                 currentImage={currentImage}
                 setCurrentImage={setCurrentImage}
+                activeTool={activeTool}
+                wandSettings={wandSettings}
               />
               <AnalyticsPanel />
             </main>
