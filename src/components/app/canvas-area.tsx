@@ -92,7 +92,8 @@ export function CanvasArea({
           return;
       };
 
-      const pointsForWand = lastMousePosition && activeTool === 'wand' 
+      const isPreview = targetCanvas === previewCanvasRef.current;
+      const pointsForWand = isPreview && lastMousePosition && activeTool === 'wand' 
         ? [...points, { ...lastMousePosition, tolerance: settings.tolerance }] 
         : points;
 
@@ -123,9 +124,10 @@ export function CanvasArea({
 
         const { contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
+        
+        clearCanvas(targetCanvas);
         const maskImageData = targetCtx.createImageData(targetCanvas.width, targetCanvas.height);
         const maskData = maskImageData.data;
-        const visited = new Uint8Array(naturalWidth * naturalHeight);
         
         const convertColor = (r: number, g: number, b: number) => {
             switch(colorSpace) {
@@ -159,110 +161,125 @@ export function CanvasArea({
             );
         };
         
-        const queue: [number, number][] = [];
-        const startColors: {color: number[], tolerance: number}[] = [];
+        const avoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
+        if (avoid.length > 0) {
+            const avoidColors = avoid.map(p => ({ color: convertColor(p.color[0], p.color[1], p.color[2]), tolerance: p.tolerance, colorSpace: p.colorSpace }));
+            for(let y=0; y < naturalHeight; y++) {
+                for (let x=0; x < naturalWidth; x++) {
+                    const index = y * naturalWidth + x;
+                    const dataIndex = index * 4;
+                    const r = imageData[dataIndex];
+                    const g = imageData[dataIndex + 1];
+                    const b = imageData[dataIndex + 2];
+                    const pixelColor = convertColor(r, g, b);
 
-        pointsForWand.forEach(point => {
-          const { x: startX, y: startY } = point;
-          const startIdx = (startY * naturalWidth + startX) * 4;
-          const r = imageData[startIdx];
-          const g = imageData[startIdx + 1];
-          const b = imageData[startIdx + 2];
-          
-          startColors.push({
-            color: convertColor(r,g,b), 
-            tolerance: point.tolerance
-          });
-
-
-          if (visited[startY * naturalWidth + startX] === 0) {
-              queue.push([startX, startY]);
-              visited[startY * naturalWidth + startX] = 1;
-          }
-        });
-
-        clearCanvas(targetCanvas);
-        
-        const processPixel = (x: number, y: number) => {
-            const index = y * naturalWidth + x;
-            if (visited[index]) return;
-
-            const dataIndex = index * 4;
-            const r = imageData[dataIndex];
-            const g = imageData[dataIndex + 1];
-            const b = imageData[dataIndex + 2];
-            const pixelColor = convertColor(r, g, b);
-            
-            let isAvoided = false;
-            for (const avoidPoint of avoid) {
-                const avoidColor = convertColor(avoidPoint.color[0], avoidPoint.color[1], avoidPoint.color[2]);
-                const dist = getDistance(pixelColor, avoidColor, avoidPoint.colorSpace);
-                if (dist <= avoidPoint.tolerance) {
-                    isAvoided = true;
-                     const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
-                     const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
-                     const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
-                     maskData[maskDataIndex] = 255;
-                     maskData[maskDataIndex + 1] = 0;
-                     maskData[maskDataIndex + 2] = 0;
-                     maskData[maskDataIndex + 3] = 128;
-                    break;
-                }
-            }
-            if (isAvoided) return;
-
-
-            let isSimilar = false;
-            for (const startColor of startColors) {
-                const distance = getDistance(startColor.color, pixelColor, colorSpace);
-                if (distance <= startColor.tolerance) {
-                    isSimilar = true;
-                    break;
-                }
-            }
-
-            if (isSimilar) {
-                visited[index] = 1;
-                if (contiguous) {
-                    queue.push([x, y]);
-                }
-                const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
-                const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
-                const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
-
-                maskData[maskDataIndex] = 50;
-                maskData[maskDataIndex + 1] = 150;
-                maskData[maskDataIndex + 2] = 255;
-                maskData[maskDataIndex + 3] = 128;
-            }
-        };
-
-        if (contiguous && pointsForWand.length > 0) {
-            let head = 0;
-            while (head < queue.length) {
-                const [x, y] = queue[head++]!;
-                
-                 const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
-                 const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
-                 const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
-
-                 maskData[maskDataIndex] = 50;
-                 maskData[maskDataIndex + 1] = 150;
-                 maskData[maskDataIndex + 2] = 255;
-                 maskData[maskDataIndex + 3] = 128;
-
-                const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
-
-                for (const [nx, ny] of neighbors) {
-                    if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
-                         processPixel(nx, ny);
+                    for (const avoidPoint of avoidColors) {
+                       const dist = getDistance(pixelColor, avoidPoint.color, avoidPoint.colorSpace);
+                       if (dist <= avoidPoint.tolerance) {
+                           avoidanceMask[index] = 1;
+                           const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                           const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                           const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+                           maskData[maskDataIndex] = 255;
+                           maskData[maskDataIndex + 1] = 0;
+                           maskData[maskDataIndex + 2] = 0;
+                           maskData[maskDataIndex + 3] = 128;
+                           break;
+                       }
                     }
                 }
             }
-        } else {
-            for(let y=0; y < naturalHeight; y++) {
-                for (let x=0; x < naturalWidth; x++) {
-                    processPixel(x, y);
+        }
+        
+        if (pointsForWand.length > 0) {
+            const visited = new Uint8Array(naturalWidth * naturalHeight);
+            const queue: [number, number][] = [];
+            const startColors: {color: number[], tolerance: number}[] = [];
+
+            pointsForWand.forEach(point => {
+                const { x: startX, y: startY } = point;
+                const startIdx = (startY * naturalWidth + startX) * 4;
+                const r = imageData[startIdx];
+                const g = imageData[startIdx + 1];
+                const b = imageData[startIdx + 2];
+                
+                startColors.push({
+                    color: convertColor(r,g,b), 
+                    tolerance: point.tolerance
+                });
+
+                const startIndex = startY * naturalWidth + startX;
+                if (visited[startIndex] === 0 && avoidanceMask[startIndex] === 0) {
+                    queue.push([startX, startY]);
+                    visited[startIndex] = 1;
+                }
+            });
+            
+            const processPixel = (x: number, y: number) => {
+                const index = y * naturalWidth + x;
+                if (visited[index] || avoidanceMask[index]) return;
+
+                const dataIndex = index * 4;
+                const r = imageData[dataIndex];
+                const g = imageData[dataIndex + 1];
+                const b = imageData[dataIndex + 2];
+                const pixelColor = convertColor(r, g, b);
+                
+                let isSimilar = false;
+                for (const startColor of startColors) {
+                    const distance = getDistance(startColor.color, pixelColor, colorSpace);
+                    if (distance <= startColor.tolerance) {
+                        isSimilar = true;
+                        break;
+                    }
+                }
+
+                if (isSimilar) {
+                    visited[index] = 1;
+                    if (contiguous) {
+                        queue.push([x, y]);
+                    }
+                    const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                    const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                    const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+
+                    maskData[maskDataIndex] = 50;
+                    maskData[maskDataIndex + 1] = 150;
+                    maskData[maskDataIndex + 2] = 255;
+                    maskData[maskDataIndex + 3] = 128;
+                }
+            };
+
+            if (contiguous) {
+                let head = 0;
+                while (head < queue.length) {
+                    const [x, y] = queue[head++]!;
+                    
+                    const index = y * naturalWidth + x;
+                    if(avoidanceMask[index]) continue;
+
+                    const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                    const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                    const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+
+                    maskData[maskDataIndex] = 50;
+                    maskData[maskDataIndex + 1] = 150;
+                    maskData[maskDataIndex + 2] = 255;
+                    maskData[maskDataIndex + 3] = 128;
+
+                    const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
+
+                    for (const [nx, ny] of neighbors) {
+                        if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
+                            processPixel(nx, ny);
+                        }
+                    }
+                }
+            } else {
+                for(let y=0; y < naturalHeight; y++) {
+                    for (let x=0; x < naturalWidth; x++) {
+                        processPixel(x, y);
+                    }
                 }
             }
         }
@@ -410,27 +427,31 @@ export function CanvasArea({
 
     let pointFound = false;
 
-    const newSeedPoints = seedPoints.map(p => {
-        const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
-        if (distance < HOVER_RADIUS) {
-            pointFound = true;
-            return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
-        }
-        return p;
+    setSeedPoints(prevPoints => {
+        const newPoints = prevPoints.map(p => {
+            const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
+            if (distance < HOVER_RADIUS) {
+                pointFound = true;
+                return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
+            }
+            return p;
+        });
+        return newPoints;
     });
-    setSeedPoints(newSeedPoints);
 
     if (pointFound) return;
 
-    const newAvoidancePoints = avoidancePoints.map(p => {
-        const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
-        if (distance < HOVER_RADIUS) {
-            pointFound = true;
-            return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
-        }
-        return p;
+    setAvoidancePoints(prevPoints => {
+        const newPoints = prevPoints.map(p => {
+            const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
+            if (distance < HOVER_RADIUS) {
+                pointFound = true;
+                return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
+            }
+            return p;
+        });
+        return newPoints;
     });
-    setAvoidancePoints(newAvoidancePoints);
 
     if (pointFound) return;
     
