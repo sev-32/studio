@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 import {
+  Sidebar,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuItem,
@@ -33,14 +34,19 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
   }, [setActiveTool]);
 
   return (
-    <>
-      <SidebarHeader className="flex items-center justify-between p-2">
-        <h1 className="font-headline text-2xl font-bold text-primary">
+    <Sidebar side="left" collapsible="icon">
+      <SidebarHeader className="flex items-center justify-center p-2">
+        <h1 className="font-headline text-2xl font-bold text-primary group-data-[state=expanded]:block hidden">
           S
         </h1>
-        <SidebarTrigger />
+        <div className="group-data-[state=expanded]:-mr-2 group-data-[state=expanded]:block hidden">
+          <SidebarTrigger />
+        </div>
+        <h1 className="font-headline text-2xl font-bold text-primary group-data-[state=collapsed]:block hidden">
+          S
+        </h1>
       </SidebarHeader>
-      <SidebarContent className="flex-1">
+      <SidebarContent>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -49,7 +55,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Magic Wand (W)"
             >
               <Wand2 />
-              <span className="sr-only">Magic Wand</span>
+              <span>Magic Wand</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -59,7 +65,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Magic Lasso (L)"
             >
               <Lasso />
-              <span className="sr-only">Magic Lasso</span>
+              <span>Magic Lasso</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -69,7 +75,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Layers (C)"
             >
               <Layers />
-              <span className="sr-only">Layers</span>
+              <span>Layers</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -78,7 +84,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Clear Points (Esc)"
             >
               <Undo2 />
-              <span className="sr-only">Clear Points</span>
+              <span>Clear Points</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -88,17 +94,17 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings">
               <Settings />
-              <span className="sr-only">Settings</span>
+              <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Account">
               <UserCircle />
-              <span className="sr-only">Account</span>
+              <span>Account</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-    </>
+    </Sidebar>
   );
 }

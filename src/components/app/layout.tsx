@@ -30,7 +30,7 @@ export function AppLayout() {
   const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
     tolerance: 30,
     contiguous: true,
-    colorSpace: 'rgb',
+    colorSpaces: ['rgb'],
   });
   const [lassoSettings, setLassoSettings] = useState<MagicLassoSettings>({
     nodeDropTime: 200,
@@ -76,12 +76,9 @@ export function AppLayout() {
     <SidebarProvider>
       <div className="flex h-screen w-full flex-col">
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar side="left" collapsible="icon">
-            <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} onClearPoints={handleClearPoints} />
-          </Sidebar>
-
-          <SidebarInset className="flex flex-col !p-0 !m-0">
-            <main className="flex-1 overflow-hidden h-full">
+          <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} onClearPoints={handleClearPoints} />
+          
+          <main className="flex-1 overflow-hidden h-full">
               <CanvasArea
                 currentImage={currentImage}
                 setCurrentImage={setCurrentImage}
@@ -98,8 +95,7 @@ export function AppLayout() {
                 onCopyToLayer={handleCopyToLayer}
                 onClearPoints={handleClearPoints}
               />
-            </main>
-          </SidebarInset>
+          </main>
 
           <Sidebar side="right">
             <RightSidebar

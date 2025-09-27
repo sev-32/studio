@@ -28,6 +28,7 @@ import {
 import type { Dispatch, SetStateAction } from 'react';
 import { ScrollArea } from '../ui/scroll-area';
 import { Eye, EyeOff, Plus, Trash2, MinusCircle } from 'lucide-react';
+import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 
 interface RightSidebarProps {
   activeTool: Tool;
@@ -237,28 +238,25 @@ function MagicWandSettingsComponent({
         </div>
         <div className="space-y-3">
           <Label
-            htmlFor="color-space"
             className={disabled ? 'text-muted-foreground' : ''}
           >
             Color Space
           </Label>
-          <Select
-            value={settings.colorSpace}
-            onValueChange={(value) =>
-              setSettings((s) => ({ ...s, colorSpace: value as 'rgb' | 'hsv' | 'lab' }))
-            }
+          <ToggleGroup
+            type="multiple"
+            value={settings.colorSpaces}
+            onValueChange={(value) => {
+              if (value.length > 0) { // Must have at least one selected
+                setSettings((s) => ({...s, colorSpaces: value}));
+              }
+            }}
             disabled={disabled}
+            className="grid grid-cols-3 gap-2"
           >
-            <SelectTrigger id="color-space">
-              <SelectValue placeholder="Select color space" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rgb">RGB</SelectItem>
-              <SelectItem value="hsv">HSV</SelectItem>
-              <SelectItem value="lab">LAB</SelectItem>
-              <SelectItem value="quaternion">Quaternion (experimental)</SelectItem>
-            </SelectContent>
-          </Select>
+            <ToggleGroupItem value="rgb" aria-label="Toggle RGB">RGB</ToggleGroupItem>
+            <ToggleGroupItem value="hsv" aria-label="Toggle HSV">HSV</ToggleGroupItem>
+            <ToggleGroupItem value="lab" aria-label="Toggle LAB">LAB</ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </div>
     </SidebarGroup>

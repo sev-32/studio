@@ -52,6 +52,7 @@ export function CanvasArea({
   activeTool,
   wandSettings,
   setWandSettings,
+  autoDetectMode,
   segmentGroups,
   setSegmentGroups,
   activeGroupId,
@@ -108,13 +109,13 @@ export function CanvasArea({
         tempCtx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
         const originalImageData = tempCtx.getImageData(0,0,naturalWidth,naturalHeight);
 
-        const { contiguous, colorSpace } = settings;
+        const { contiguous, colorSpaces } = settings;
         const imageData = originalImageData.data;
         
         clearCanvas(targetCanvas);
 
-        const convertColor = (r: number, g: number, b: number) => {
-            switch(colorSpace) {
+        const convertColor = (r: number, g: number, b: number, space: string) => {
+            switch(space) {
                 case 'hsv': return colorConverters.rgbToHsv(r, g, b);
                 case 'lab': return colorConverters.rgbToLab(r, g, b);
                 case 'rgb': default: return [r, g, b];
@@ -155,16 +156,22 @@ export function CanvasArea({
                     const r = imageData[dataIndex];
                     const g = imageData[dataIndex + 1];
                     const b = imageData[dataIndex + 2];
-                    const pixelColor = convertColor(r, g, b);
-
+                    
                     for (const group of avoidGroups) {
                         for (const avoidPoint of group.points) {
-                           const pointColor = convertColor(avoidPoint.color![0], avoidPoint.color![1], avoidPoint.color![2]);
-                           const dist = getDistance(pixelColor, pointColor, avoidPoint.colorSpace || colorSpace);
-                           if (dist <= avoidPoint.tolerance) {
-                               avoidanceMask[index] = 1;
-                               break;
+                           const pointColorSpaces = avoidPoint.colorSpaces || colorSpaces;
+                           let isAvoided = false;
+                           for (const space of pointColorSpaces) {
+                                const pixelColor = convertColor(r, g, b, space);
+                                const pointColor = convertColor(avoidPoint.color![0], avoidPoint.color![1], avoidPoint.color![2], space);
+                                const dist = getDistance(pixelColor, pointColor, space);
+                                if (dist <= avoidPoint.tolerance) {
+                                    avoidanceMask[index] = 1;
+                                    isAvoided = true;
+                                    break;
+                                }
                            }
+                           if(isAvoided) break;
                         }
                         if(avoidanceMask[index] === 1) break;
                     }
@@ -177,7 +184,7 @@ export function CanvasArea({
             const maskData = maskImageData.data;
             const visited = new Uint8Array(naturalWidth * naturalHeight);
             const queue: [number, number][] = [];
-            const startColors: {color: number[], tolerance: number}[] = [];
+            const startColors: {colors: Record<string, number[]>, tolerance: number}[] = [];
 
             group.points.forEach(point => {
                 const { x: startX, y: startY } = point;
@@ -186,8 +193,15 @@ export function CanvasArea({
                 const g = imageData[startIdx + 1];
                 const b = imageData[startIdx + 2];
                 
+                const pointColorSpaces = group.type === 'avoid' ? (point.colorSpaces || colorSpaces) : colorSpaces;
+
+                const colorsBySpace: Record<string, number[]> = {};
+                pointColorSpaces.forEach(space => {
+                    colorsBySpace[space] = convertColor(r, g, b, space);
+                });
+
                 startColors.push({
-                    color: convertColor(r,g,b), 
+                    colors: colorsBySpace,
                     tolerance: point.tolerance
                 });
 
@@ -206,12 +220,19 @@ export function CanvasArea({
                 const r = imageData[dataIndex];
                 const g = imageData[dataIndex + 1];
                 const b = imageData[dataIndex + 2];
-                const pixelColor = convertColor(r, g, b);
                 
                 let isSimilar = false;
                 for (const startColor of startColors) {
-                    const distance = getDistance(startColor.color, pixelColor, colorSpace);
-                    if (distance <= startColor.tolerance) {
+                    const pointColorSpaces = Object.keys(startColor.colors);
+                    
+                    const distances = pointColorSpaces.map(space => {
+                        const pixelColor = convertColor(r, g, b, space);
+                        return getDistance(startColor.colors[space], pixelColor, space);
+                    });
+
+                    const minDistance = Math.min(...distances);
+
+                    if (minDistance <= startColor.tolerance) {
                         isSimilar = true;
                         break;
                     }
@@ -429,7 +450,7 @@ export function CanvasArea({
             };
             if(pointType === 'avoid') {
                 newPoint.color = color;
-                newPoint.colorSpace = wandSettings.colorSpace;
+                newPoint.colorSpaces = wandSettings.colorSpaces;
             }
 
             const updatedGroup = { ...newGroups[activeGroupIndex] };

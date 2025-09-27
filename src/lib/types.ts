@@ -3,7 +3,7 @@ export type Tool = 'wand' | 'lasso' | 'layers';
 export interface MagicWandSettings {
   tolerance: number;
   contiguous: boolean;
-  colorSpace: string;
+  colorSpaces: string[];
 }
 
 export interface MagicLassoSettings {
@@ -30,7 +30,7 @@ export interface Point {
   y: number;
   tolerance: number;
   color?: number[];
-  colorSpace?: string;
+  colorSpaces?: string[];
 }
 
 export interface SegmentGroup {
