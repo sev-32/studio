@@ -45,5 +45,3 @@ export interface Layer {
     imageData: ImageData;
     visible: boolean;
 }
-
-    

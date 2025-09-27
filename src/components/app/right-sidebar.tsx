@@ -39,6 +39,7 @@ interface RightSidebarProps {
   setAutoDetectMode: Dispatch<SetStateAction<boolean>>;
   layers: Layer[];
   setLayers: Dispatch<SetStateAction<Layer[]>>;
+  onCopyToLayer: () => void;
 }
 
 export function RightSidebar({
@@ -49,15 +50,16 @@ export function RightSidebar({
   setLassoSettings,
   autoDetectMode,
   setAutoDetectMode,
-  layers,
+layers,
   setLayers,
+  onCopyToLayer,
 }: RightSidebarProps) {
   return (
     <SidebarContent>
       <AnalyticsPanel />
       <SidebarSeparator />
       {activeTool === 'layers' && (
-        <LayersPanel layers={layers} setLayers={setLayers} />
+        <LayersPanel layers={layers} setLayers={setLayers} onCopyToLayer={onCopyToLayer} />
       )}
       {activeTool !== 'layers' && (
         <>
@@ -98,9 +100,11 @@ export function RightSidebar({
 function LayersPanel({
   layers,
   setLayers,
+  onCopyToLayer,
 }: {
   layers: Layer[];
   setLayers: Dispatch<SetStateAction<Layer[]>>;
+  onCopyToLayer: () => void;
 }) {
   const toggleVisibility = (id: string) => {
     setLayers(
@@ -111,7 +115,7 @@ function LayersPanel({
     <SidebarGroup>
       <SidebarGroupLabel className="font-headline">Layers</SidebarGroupLabel>
       <div className="p-2 space-y-2">
-        <Button className="w-full">Copy Selection to Layer</Button>
+        <Button className="w-full" onClick={onCopyToLayer}>Copy Selection to Layer</Button>
         <ScrollArea className="h-48">
           <div className="space-y-2">
             {layers.length === 0 && (

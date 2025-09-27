@@ -16,7 +16,7 @@ import type {
   SeedPoint,
   Layer,
 } from '@/lib/types';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export function AppLayout() {
@@ -37,12 +37,27 @@ export function AppLayout() {
   const [avoidancePoints, setAvoidancePoints] = useState<AvoidancePoint[]>([]);
   const [layers, setLayers] = useState<Layer[]>([]);
 
+  const handleClearPoints = useCallback(() => {
+    setSeedPoints([]);
+    setAvoidancePoints([]);
+  }, []);
+
+  const handleCopyToLayer = useCallback((imageData: ImageData) => {
+    const newLayer: Layer = {
+      id: `layer-${Date.now()}`,
+      name: `Layer ${layers.length + 1}`,
+      imageData,
+      visible: true,
+    };
+    setLayers(prev => [...prev, newLayer]);
+  }, [layers.length]);
+
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full flex-col">
         <div className="flex flex-1 overflow-hidden">
           <Sidebar side="left">
-            <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} />
+            <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} onClearPoints={handleClearPoints} />
           </Sidebar>
 
           <SidebarInset className="flex flex-col !p-0 !m-0">
@@ -58,6 +73,9 @@ export function AppLayout() {
                 setSeedPoints={setSeedPoints}
                 avoidancePoints={avoidancePoints}
                 setAvoidancePoints={setAvoidancePoints}
+                layers={layers}
+                onCopyToLayer={handleCopyToLayer}
+                onClearPoints={handleClearPoints}
               />
             </main>
           </SidebarInset>
@@ -73,6 +91,10 @@ export function AppLayout() {
               setAutoDetectMode={setAutoDetectMode}
               layers={layers}
               setLayers={setLayers}
+              onCopyToLayer={() => {
+                // This will be properly implemented later
+                console.log("Copy to layer clicked");
+              }}
             />
           </Sidebar>
         </div>

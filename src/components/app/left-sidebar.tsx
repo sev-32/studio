@@ -19,13 +19,19 @@ import {
   UserCircle,
 } from 'lucide-react';
 import type { Tool } from '@/lib/types';
+import React from 'react';
 
 interface LeftSidebarProps {
   activeTool: Tool;
   setActiveTool: Dispatch<SetStateAction<Tool>>;
+  onClearPoints: () => void;
 }
 
-export function LeftSidebar({ activeTool, setActiveTool }: LeftSidebarProps) {
+export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSidebarProps) {
+  const handleSetActiveTool = React.useCallback((tool: Tool) => {
+    setActiveTool(tool);
+  }, [setActiveTool]);
+
   return (
     <>
       <SidebarHeader className="flex items-center justify-between p-2">
@@ -38,7 +44,7 @@ export function LeftSidebar({ activeTool, setActiveTool }: LeftSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => setActiveTool('wand')}
+              onClick={() => handleSetActiveTool('wand')}
               isActive={activeTool === 'wand'}
               tooltip="Magic Wand (W)"
             >
@@ -48,7 +54,7 @@ export function LeftSidebar({ activeTool, setActiveTool }: LeftSidebarProps) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => setActiveTool('lasso')}
+              onClick={() => handleSetActiveTool('lasso')}
               isActive={activeTool === 'lasso'}
               tooltip="Magic Lasso (L)"
             >
@@ -58,7 +64,7 @@ export function LeftSidebar({ activeTool, setActiveTool }: LeftSidebarProps) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => setActiveTool('layers')}
+              onClick={() => handleSetActiveTool('layers')}
               isActive={activeTool === 'layers'}
               tooltip="Layers (C)"
             >
@@ -68,11 +74,11 @@ export function LeftSidebar({ activeTool, setActiveTool }: LeftSidebarProps) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              onClick={() => {}} // Placeholder for undo
-              tooltip="Undo (Ctrl+Z)"
+              onClick={onClearPoints}
+              tooltip="Clear Points (Esc)"
             >
               <Undo2 />
-              <span>Undo</span>
+              <span>Clear Points</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
