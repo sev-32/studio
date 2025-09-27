@@ -19,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input';
 import type { MagicLassoSettings, MagicWandSettings, Tool } from '@/lib/types';
 import type { Dispatch, SetStateAction } from 'react';
+import { AnalyticsPanel } from './analytics-panel';
 
 interface RightSidebarProps {
   activeTool: Tool;
@@ -41,6 +42,8 @@ export function RightSidebar({
 }: RightSidebarProps) {
   return (
     <SidebarContent>
+      <AnalyticsPanel />
+      <SidebarSeparator />
       <SidebarGroup>
         <SidebarGroupLabel className="font-headline">
           Detection Mode

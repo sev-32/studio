@@ -47,7 +47,6 @@ export function AppLayout() {
                 setWandSettings={setWandSettings}
                 autoDetectMode={autoDetectMode}
               />
-              <AnalyticsPanel />
             </main>
           </SidebarInset>
 
