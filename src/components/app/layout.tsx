@@ -12,12 +12,16 @@ import type {
   MagicLassoSettings,
   MagicWandSettings,
   Tool,
-  AvoidancePoint,
-  SeedPoint,
+  SegmentGroup,
   Layer,
 } from '@/lib/types';
 import { useState, useCallback } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+
+function generateRandomColor() {
+    const h = Math.floor(Math.random() * 360);
+    return `hsla(${h}, 80%, 50%, 0.5)`;
+}
 
 export function AppLayout() {
   const [activeTool, setActiveTool] = useState<Tool>('wand');
@@ -33,13 +37,15 @@ export function AppLayout() {
     elasticity: 0.5,
     costFunction: 'sobel',
   });
-  const [seedPoints, setSeedPoints] = useState<SeedPoint[]>([]);
-  const [avoidancePoints, setAvoidancePoints] = useState<AvoidancePoint[]>([]);
+  
+  const [segmentGroups, setSegmentGroups] = useState<SegmentGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
   const [layers, setLayers] = useState<Layer[]>([]);
 
   const handleClearPoints = useCallback(() => {
-    setSeedPoints([]);
-    setAvoidancePoints([]);
+    setSegmentGroups([]);
+    setActiveGroupId(null);
   }, []);
 
   const handleCopyToLayer = useCallback((imageData: ImageData) => {
@@ -51,6 +57,20 @@ export function AppLayout() {
     };
     setLayers(prev => [...prev, newLayer]);
   }, [layers.length]);
+
+  const addNewGroup = (type: 'add' | 'avoid') => {
+    const newGroup: SegmentGroup = {
+        id: `group-${Date.now()}`,
+        name: `${type === 'add' ? 'Selection' : 'Avoidance'} ${segmentGroups.filter(g => g.type === type).length + 1}`,
+        type,
+        color: type === 'add' ? generateRandomColor() : 'hsla(0, 100%, 50%, 0.5)',
+        points: [],
+        visible: true,
+    };
+    setSegmentGroups(prev => [...prev, newGroup]);
+    setActiveGroupId(newGroup.id);
+  };
+
 
   return (
     <SidebarProvider>
@@ -69,10 +89,11 @@ export function AppLayout() {
                 wandSettings={wandSettings}
                 setWandSettings={setWandSettings}
                 autoDetectMode={autoDetectMode}
-                seedPoints={seedPoints}
-                setSeedPoints={setSeedPoints}
-                avoidancePoints={avoidancePoints}
-                setAvoidancePoints={setAvoidancePoints}
+                segmentGroups={segmentGroups}
+                setSegmentGroups={setSegmentGroups}
+                activeGroupId={activeGroupId}
+                setActiveGroupId={setActiveGroupId}
+                addNewGroup={addNewGroup}
                 layers={layers}
                 onCopyToLayer={handleCopyToLayer}
                 onClearPoints={handleClearPoints}
@@ -89,6 +110,9 @@ export function AppLayout() {
               setLassoSettings={setLassoSettings}
               autoDetectMode={autoDetectMode}
               setAutoDetectMode={setAutoDetectMode}
+              segmentGroups={segmentGroups}
+              setSegmentGroups={setSegmentGroups}
+              addNewGroup={addNewGroup}
               layers={layers}
               setLayers={setLayers}
               onCopyToLayer={() => {

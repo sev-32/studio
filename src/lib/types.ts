@@ -25,22 +25,27 @@ export interface Preset {
   radius?: number;
 }
 
-export interface SeedPoint {
+export interface Point {
   x: number;
   y: number;
   tolerance: number;
+  color?: number[];
+  colorSpace?: string;
 }
 
-export interface AvoidancePoint {
-  x: number;
-  y: number;
-  color: number[];
-  tolerance: number;
-  colorSpace: string;
+export interface SegmentGroup {
+    id: string;
+    name: string;
+    type: 'add' | 'avoid';
+    color: string;
+    points: Point[];
+    visible: boolean;
+    imageData?: ImageData;
 }
+
 
 export interface Layer {
-    id: string;
+    id:string;
     name: string;
     imageData: ImageData;
     visible: boolean;

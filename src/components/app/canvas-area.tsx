@@ -22,8 +22,8 @@ import { useRef, useEffect, useCallback, useState }from 'react';
 import type {
   MagicWandSettings,
   Tool,
-  SeedPoint,
-  AvoidancePoint,
+  Point,
+  SegmentGroup,
   Layer,
 } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -36,10 +36,11 @@ interface CanvasAreaProps {
   wandSettings: MagicWandSettings;
   setWandSettings: Dispatch<SetStateAction<MagicWandSettings>>;
   autoDetectMode: boolean;
-  seedPoints: SeedPoint[];
-  setSeedPoints: Dispatch<SetStateAction<SeedPoint[]>>;
-  avoidancePoints: AvoidancePoint[];
-  setAvoidancePoints: Dispatch<SetStateAction<AvoidancePoint[]>>;
+  segmentGroups: SegmentGroup[];
+  setSegmentGroups: Dispatch<SetStateAction<SegmentGroup[]>>;
+  activeGroupId: string | null;
+  setActiveGroupId: Dispatch<SetStateAction<string | null>>;
+  addNewGroup: (type: 'add' | 'avoid') => void;
   layers: Layer[];
   onCopyToLayer: (imageData: ImageData) => void;
   onClearPoints: () => void;
@@ -51,10 +52,11 @@ export function CanvasArea({
   activeTool,
   wandSettings,
   setWandSettings,
-  seedPoints,
-  setSeedPoints,
-  avoidancePoints,
-  setAvoidancePoints,
+  segmentGroups,
+  setSegmentGroups,
+  activeGroupId,
+  setActiveGroupId,
+  addNewGroup,
   layers,
   onCopyToLayer,
   onClearPoints,
@@ -75,16 +77,15 @@ export function CanvasArea({
   useEffect(() => {
     clearCanvas(selectionCanvasRef.current);
     clearCanvas(previewCanvasRef.current);
-    setSeedPoints([]);
-    setAvoidancePoints([]);
-  }, [currentImage, setSeedPoints, setAvoidancePoints]);
+    setSegmentGroups([]);
+  }, [currentImage, setSegmentGroups]);
 
   const performMagicWand = useCallback(
     (
       targetCanvas: HTMLCanvasElement,
-      points: SeedPoint[],
+      allGroups: SegmentGroup[],
       settings: MagicWandSettings,
-      avoid: AvoidancePoint[],
+      isPreview: boolean = false
     ) => {
       const image = imageRef.current;
       if (!image || !image.complete || image.naturalWidth === 0) {
@@ -92,16 +93,6 @@ export function CanvasArea({
           return;
       };
 
-      const isPreview = targetCanvas === previewCanvasRef.current;
-      const pointsForWand = isPreview && lastMousePosition && activeTool === 'wand' 
-        ? [...points, { ...lastMousePosition, tolerance: settings.tolerance }] 
-        : points;
-
-      if (pointsForWand.length === 0 && avoid.length === 0) {
-        clearCanvas(targetCanvas);
-        return;
-      }
-      
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       if (!tempCtx) return;
@@ -115,27 +106,18 @@ export function CanvasArea({
 
       try {
         tempCtx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
-        const originalImageData = tempCtx.getImageData(
-          0,
-          0,
-          naturalWidth,
-          naturalHeight
-        );
+        const originalImageData = tempCtx.getImageData(0,0,naturalWidth,naturalHeight);
 
         const { contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
         
         clearCanvas(targetCanvas);
-        const maskImageData = targetCtx.createImageData(targetCanvas.width, targetCanvas.height);
-        const maskData = maskImageData.data;
-        
+
         const convertColor = (r: number, g: number, b: number) => {
             switch(colorSpace) {
                 case 'hsv': return colorConverters.rgbToHsv(r, g, b);
                 case 'lab': return colorConverters.rgbToLab(r, g, b);
-                case 'rgb':
-                default:
-                    return [r, g, b];
+                case 'rgb': default: return [r, g, b];
             }
         };
 
@@ -147,23 +129,25 @@ export function CanvasArea({
                 return Math.sqrt(dh*dh + ds*ds + dv*dv);
             }
              if (space === 'lab') {
-                return Math.sqrt(
-                    Math.pow(c1[0] - c2[0], 2) +
-                    Math.pow(c1[1] - c2[1], 2) +
-                    Math.pow(c1[2] - c2[2], 2)
-                );
+                return Math.sqrt(Math.pow(c1[0] - c2[0], 2) + Math.pow(c1[1] - c2[1], 2) + Math.pow(c1[2] - c2[2], 2));
             }
-            // RGB
-            return Math.sqrt(
-                Math.pow(c1[0] - c2[0], 2) +
-                Math.pow(c1[1] - c2[1], 2) +
-                Math.pow(c1[2] - c2[2], 2)
-            );
+            return Math.sqrt(Math.pow(c1[0] - c2[0], 2) + Math.pow(c1[1] - c2[1], 2) + Math.pow(c1[2] - c2[2], 2));
         };
         
+        const allVisibleGroups = [...allGroups];
+        const activeGroup = allVisibleGroups.find(g => g.id === activeGroupId);
+
+        if (isPreview && lastMousePosition && activeTool === 'wand' && activeGroup) {
+            const previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
+            previewGroup.points.push({ ...lastMousePosition, tolerance: settings.tolerance });
+            const groupIndex = allVisibleGroups.findIndex(g => g.id === activeGroupId);
+            if(groupIndex > -1) allVisibleGroups[groupIndex] = previewGroup;
+        }
+
         const avoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
-        if (avoid.length > 0) {
-            const avoidColors = avoid.map(p => ({ color: convertColor(p.color[0], p.color[1], p.color[2]), tolerance: p.tolerance, colorSpace: p.colorSpace }));
+        const avoidGroups = allVisibleGroups.filter(g => g.type === 'avoid' && g.visible && g.points.length > 0);
+
+        if (avoidGroups.length > 0) {
             for(let y=0; y < naturalHeight; y++) {
                 for (let x=0; x < naturalWidth; x++) {
                     const index = y * naturalWidth + x;
@@ -173,30 +157,29 @@ export function CanvasArea({
                     const b = imageData[dataIndex + 2];
                     const pixelColor = convertColor(r, g, b);
 
-                    for (const avoidPoint of avoidColors) {
-                       const dist = getDistance(pixelColor, avoidPoint.color, avoidPoint.colorSpace);
-                       if (dist <= avoidPoint.tolerance) {
-                           avoidanceMask[index] = 1;
-                           const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
-                           const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
-                           const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
-                           maskData[maskDataIndex] = 255;
-                           maskData[maskDataIndex + 1] = 0;
-                           maskData[maskDataIndex + 2] = 0;
-                           maskData[maskDataIndex + 3] = 128;
-                           break;
-                       }
+                    for (const group of avoidGroups) {
+                        for (const avoidPoint of group.points) {
+                           const pointColor = convertColor(avoidPoint.color![0], avoidPoint.color![1], avoidPoint.color![2]);
+                           const dist = getDistance(pixelColor, pointColor, avoidPoint.colorSpace || colorSpace);
+                           if (dist <= avoidPoint.tolerance) {
+                               avoidanceMask[index] = 1;
+                               break;
+                           }
+                        }
+                        if(avoidanceMask[index] === 1) break;
                     }
                 }
             }
         }
         
-        if (pointsForWand.length > 0) {
+        allVisibleGroups.filter(g => g.visible && g.points.length > 0).forEach(group => {
+            const maskImageData = targetCtx.createImageData(targetCanvas.width, targetCanvas.height);
+            const maskData = maskImageData.data;
             const visited = new Uint8Array(naturalWidth * naturalHeight);
             const queue: [number, number][] = [];
             const startColors: {color: number[], tolerance: number}[] = [];
 
-            pointsForWand.forEach(point => {
+            group.points.forEach(point => {
                 const { x: startX, y: startY } = point;
                 const startIdx = (startY * naturalWidth + startX) * 4;
                 const r = imageData[startIdx];
@@ -217,7 +200,7 @@ export function CanvasArea({
             
             const processPixel = (x: number, y: number) => {
                 const index = y * naturalWidth + x;
-                if (visited[index] || avoidanceMask[index]) return;
+                if (visited[index] || (group.type === 'add' && avoidanceMask[index])) return;
 
                 const dataIndex = index * 4;
                 const r = imageData[dataIndex];
@@ -243,10 +226,15 @@ export function CanvasArea({
                     const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
                     const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
 
-                    maskData[maskDataIndex] = 50;
-                    maskData[maskDataIndex + 1] = 150;
-                    maskData[maskDataIndex + 2] = 255;
-                    maskData[maskDataIndex + 3] = 128;
+                    const hsla = group.color.match(/hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/);
+                    if (hsla) {
+                        const [, h, s, l, a] = hsla;
+                        const [r, g, b] = hslToRgb(parseInt(h), parseInt(s), parseInt(l));
+                        maskData[maskDataIndex] = r;
+                        maskData[maskDataIndex + 1] = g;
+                        maskData[maskDataIndex + 2] = b;
+                        maskData[maskDataIndex + 3] = parseFloat(a) * 255;
+                    }
                 }
             };
 
@@ -256,16 +244,21 @@ export function CanvasArea({
                     const [x, y] = queue[head++]!;
                     
                     const index = y * naturalWidth + x;
-                    if(avoidanceMask[index]) continue;
+                    if(group.type === 'add' && avoidanceMask[index]) continue;
 
-                    const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                     const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
                     const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
                     const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
 
-                    maskData[maskDataIndex] = 50;
-                    maskData[maskDataIndex + 1] = 150;
-                    maskData[maskDataIndex + 2] = 255;
-                    maskData[maskDataIndex + 3] = 128;
+                    const hsla = group.color.match(/hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/);
+                    if (hsla) {
+                        const [, h, s, l, a] = hsla;
+                        const [r, g, b] = hslToRgb(parseInt(h), parseInt(s), parseInt(l));
+                        maskData[maskDataIndex] = r;
+                        maskData[maskDataIndex + 1] = g;
+                        maskData[maskDataIndex + 2] = b;
+                        maskData[maskDataIndex + 3] = parseFloat(a) * 255;
+                    }
 
                     const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
 
@@ -282,9 +275,8 @@ export function CanvasArea({
                     }
                 }
             }
-        }
-
-        targetCtx.putImageData(maskImageData, 0, 0);
+             targetCtx.putImageData(maskImageData, 0, 0);
+        });
 
       } catch (e: any) {
         if (e.message.includes('cross-origin')) {
@@ -303,8 +295,17 @@ export function CanvasArea({
         }
       }
     },
-    [toast, lastMousePosition, activeTool]
+    [toast, lastMousePosition, activeTool, activeGroupId]
   );
+
+  function hslToRgb(h: number, s: number, l: number){
+    s /= 100;
+    l /= 100;
+    const k = (n: number) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+    return [255 * f(0), 255 * f(8), 255 * f(4)];
+  }
   
   const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
     const image = imageRef.current;
@@ -353,15 +354,14 @@ export function CanvasArea({
   
     performMagicWand(
       previewCanvasRef.current,
-      seedPoints,
+      segmentGroups,
       wandSettings,
-      avoidancePoints
+      true
     );
   }, [
     activeTool,
     wandSettings,
-    avoidancePoints,
-    seedPoints,
+    segmentGroups,
     performMagicWand,
   ]);
 
@@ -400,22 +400,45 @@ export function CanvasArea({
     const pixel = tempCtx.getImageData(coords.x, coords.y, 1, 1).data;
     const color = [pixel[0], pixel[1], pixel[2]];
 
-    if (event.ctrlKey) {
-      const newAvoidancePoint: AvoidancePoint = {
-          ...coords,
-          color: color,
-          colorSpace: wandSettings.colorSpace,
-          tolerance: wandSettings.tolerance,
-      };
-      setAvoidancePoints(prev => [...prev, newAvoidancePoint]);
-      toast({ title: 'Avoidance point added.' });
-    } else if (event.shiftKey) {
-      setSeedPoints(prev => [...prev, { ...coords, tolerance: wandSettings.tolerance }]);
-      toast({ title: 'Seed point added.' });
+    let currentActiveGroupId = activeGroupId;
+    let pointType: 'add' | 'avoid' = 'add';
+
+    if (event.ctrlKey) pointType = 'avoid';
+    
+    if (event.shiftKey) {
+        if (!currentActiveGroupId) {
+             addNewGroup(pointType);
+             // This is async, so we can't use activeGroupId immediately.
+             // For now, we'll let the next render handle adding the point.
+             return;
+        }
     } else {
-      setSeedPoints(() => [{ ...coords, tolerance: wandSettings.tolerance }]);
-      setAvoidancePoints([]);
+        addNewGroup(pointType);
+        return; // Let next render handle adding points.
     }
+
+
+    setSegmentGroups(prev => {
+        const newGroups = [...prev];
+        const activeGroupIndex = newGroups.findIndex(g => g.id === currentActiveGroupId);
+        
+        if (activeGroupIndex > -1) {
+            const newPoint: Point = {
+                ...coords,
+                tolerance: wandSettings.tolerance,
+            };
+            if(pointType === 'avoid') {
+                newPoint.color = color;
+                newPoint.colorSpace = wandSettings.colorSpace;
+            }
+
+            const updatedGroup = { ...newGroups[activeGroupIndex] };
+            updatedGroup.points = [...updatedGroup.points, newPoint];
+            newGroups[activeGroupIndex] = updatedGroup;
+        }
+
+        return newGroups;
+    });
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -427,30 +450,19 @@ export function CanvasArea({
 
     let pointFound = false;
 
-    setSeedPoints(prevPoints => {
-        const newPoints = prevPoints.map(p => {
-            const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
-            if (distance < HOVER_RADIUS) {
-                pointFound = true;
-                return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
-            }
-            return p;
+    setSegmentGroups(prevGroups => {
+        const newGroups = prevGroups.map(group => {
+            const newPoints = group.points.map(p => {
+                const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
+                if (distance < HOVER_RADIUS) {
+                    pointFound = true;
+                    return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
+                }
+                return p;
+            });
+            return { ...group, points: newPoints };
         });
-        return newPoints;
-    });
-
-    if (pointFound) return;
-
-    setAvoidancePoints(prevPoints => {
-        const newPoints = prevPoints.map(p => {
-            const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
-            if (distance < HOVER_RADIUS) {
-                pointFound = true;
-                return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
-            }
-            return p;
-        });
-        return newPoints;
+        return newGroups;
     });
 
     if (pointFound) return;
@@ -492,11 +504,11 @@ export function CanvasArea({
       previewCanvas.height = renderedHeight;
 
       runPreview();
-      if(selectionCanvasRef.current && (seedPoints.length > 0 || avoidancePoints.length > 0)) {
-        performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
+      if(selectionCanvasRef.current && segmentGroups.some(g => g.points.length > 0)) {
+        performMagicWand(selectionCanvasRef.current, segmentGroups, wandSettings, false);
       }
     }
-  }, [runPreview, seedPoints, wandSettings, avoidancePoints, performMagicWand]);
+  }, [runPreview, segmentGroups, wandSettings, performMagicWand]);
 
 
   useEffect(() => {
@@ -525,12 +537,12 @@ export function CanvasArea({
     if (selectionCanvasRef.current) {
       performMagicWand(
         selectionCanvasRef.current,
-        seedPoints,
+        segmentGroups,
         wandSettings,
-        avoidancePoints
+        false
       );
     }
-  }, [seedPoints, avoidancePoints, wandSettings, performMagicWand]);
+  }, [segmentGroups, wandSettings, performMagicWand]);
 
   return (
     <Card className="h-full flex flex-col">
@@ -538,7 +550,7 @@ export function CanvasArea({
         <div className="space-y-1.5">
           <CardTitle className="font-headline">Canvas</CardTitle>
           <CardDescription>
-            Use tools to create segments. Ctrl+Click to avoid, Shift+Click to add points.
+            Click to start new selection. Shift+Click to add points. Ctrl+Click to avoid.
           </CardDescription>
         </div>
         <DropdownMenu>

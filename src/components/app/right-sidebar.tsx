@@ -23,11 +23,12 @@ import {
   MagicWandSettings,
   Tool,
   Layer,
+  SegmentGroup,
 } from '@/lib/types';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalyticsPanel } from './analytics-panel';
 import { ScrollArea } from '../ui/scroll-area';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2, MinusCircle } from 'lucide-react';
 
 interface RightSidebarProps {
   activeTool: Tool;
@@ -37,6 +38,9 @@ interface RightSidebarProps {
   setLassoSettings: Dispatch<SetStateAction<MagicLassoSettings>>;
   autoDetectMode: boolean;
   setAutoDetectMode: Dispatch<SetStateAction<boolean>>;
+  segmentGroups: SegmentGroup[];
+  setSegmentGroups: Dispatch<SetStateAction<SegmentGroup[]>>;
+  addNewGroup: (type: 'add' | 'avoid') => void;
   layers: Layer[];
   setLayers: Dispatch<SetStateAction<Layer[]>>;
   onCopyToLayer: () => void;
@@ -50,7 +54,10 @@ export function RightSidebar({
   setLassoSettings,
   autoDetectMode,
   setAutoDetectMode,
-layers,
+  segmentGroups,
+  setSegmentGroups,
+  addNewGroup,
+  layers,
   setLayers,
   onCopyToLayer,
 }: RightSidebarProps) {
@@ -58,9 +65,14 @@ layers,
     <SidebarContent>
       <AnalyticsPanel />
       <SidebarSeparator />
-      {activeTool === 'layers' && (
-        <LayersPanel layers={layers} setLayers={setLayers} onCopyToLayer={onCopyToLayer} />
-      )}
+      
+      <LayersPanel 
+        segmentGroups={segmentGroups}
+        setSegmentGroups={setSegmentGroups}
+        addNewGroup={addNewGroup}
+      />
+      <SidebarSeparator />
+
       {activeTool !== 'layers' && (
         <>
           <SidebarGroup>
@@ -98,46 +110,71 @@ layers,
 }
 
 function LayersPanel({
-  layers,
-  setLayers,
-  onCopyToLayer,
+  segmentGroups,
+  setSegmentGroups,
+  addNewGroup
 }: {
-  layers: Layer[];
-  setLayers: Dispatch<SetStateAction<Layer[]>>;
-  onCopyToLayer: () => void;
+  segmentGroups: SegmentGroup[];
+  setSegmentGroups: Dispatch<SetStateAction<SegmentGroup[]>>;
+  addNewGroup: (type: 'add' | 'avoid') => void;
 }) {
+
   const toggleVisibility = (id: string) => {
-    setLayers(
-      layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l))
+    setSegmentGroups(
+      segmentGroups.map((g) => (g.id === id ? { ...g, visible: !g.visible } : g))
     );
   };
+
+  const deleteGroup = (id: string) => {
+      setSegmentGroups(segmentGroups.filter(g => g.id !== id));
+  }
+
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="font-headline">Layers</SidebarGroupLabel>
+      <SidebarGroupLabel className="font-headline">Layers & Segments</SidebarGroupLabel>
       <div className="p-2 space-y-2">
-        <Button className="w-full" onClick={onCopyToLayer}>Copy Selection to Layer</Button>
+        <div className='flex gap-2'>
+            <Button className="w-full" size="sm" onClick={() => addNewGroup('add')}>
+                <Plus className='mr-2'/> New Add Group
+            </Button>
+            <Button className="w-full" size="sm" variant="destructive" onClick={() => addNewGroup('avoid')}>
+                <MinusCircle className='mr-2' /> New Avoid Group
+            </Button>
+        </div>
         <ScrollArea className="h-48">
           <div className="space-y-2">
-            {layers.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">No layers yet.</p>
+            {segmentGroups.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">No segment groups yet.</p>
             )}
-            {layers.map((layer) => (
+            {segmentGroups.map((group) => (
               <div
-                key={layer.id}
+                key={group.id}
                 className="flex items-center justify-between p-2 rounded-md bg-secondary"
               >
-                <span className="text-sm">{layer.name}</span>
+                <div 
+                    className='w-4 h-4 rounded-full mr-2'
+                    style={{backgroundColor: group.color}}
+                />
+                <span className="text-sm flex-1">{group.name}</span>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
-                  onClick={() => toggleVisibility(layer.id)}
+                  onClick={() => toggleVisibility(group.id)}
                 >
-                  {layer.visible ? (
+                  {group.visible ? (
                     <Eye className="h-4 w-4" />
                   ) : (
                     <EyeOff className="h-4 w-4" />
                   )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => deleteGroup(group.id)}
+                >
+                    <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             ))}
