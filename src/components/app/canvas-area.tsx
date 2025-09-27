@@ -45,8 +45,6 @@ interface CanvasAreaProps {
   onClearPoints: () => void;
 }
 
-type LastPoint = { type: 'seed'; index: number } | { type: 'avoid'; index: number } | null;
-
 export function CanvasArea({
   currentImage,
   setCurrentImage,
@@ -57,14 +55,16 @@ export function CanvasArea({
   setSeedPoints,
   avoidancePoints,
   setAvoidancePoints,
+  layers,
+  onCopyToLayer,
+  onClearPoints,
 }: CanvasAreaProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   const [lastMousePosition, setLastMousePosition] = useState<{x: number, y: number} | null>(null);
-  const [lastClickedPoint, setLastClickedPoint] = useState<LastPoint>(null);
-
+  
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -77,7 +77,6 @@ export function CanvasArea({
     clearCanvas(previewCanvasRef.current);
     setSeedPoints([]);
     setAvoidancePoints([]);
-    setLastClickedPoint(null);
   }, [currentImage, setSeedPoints, setAvoidancePoints]);
 
   const performMagicWand = useCallback(
@@ -86,7 +85,6 @@ export function CanvasArea({
       points: SeedPoint[],
       settings: MagicWandSettings,
       avoid: AvoidancePoint[],
-      previewingAvoid?: boolean
     ) => {
       const image = imageRef.current;
       if (!image || !image.complete || image.naturalWidth === 0) {
@@ -94,11 +92,11 @@ export function CanvasArea({
           return;
       };
 
-      const pointsForPreview = lastMousePosition && activeTool === 'wand' 
+      const pointsForWand = lastMousePosition && activeTool === 'wand' 
         ? [...points, { ...lastMousePosition, tolerance: settings.tolerance }] 
         : points;
 
-      if (pointsForPreview.length === 0 && avoid.length === 0) {
+      if (pointsForWand.length === 0 && avoid.length === 0) {
         clearCanvas(targetCanvas);
         return;
       }
@@ -164,7 +162,7 @@ export function CanvasArea({
         const queue: [number, number][] = [];
         const startColors: {color: number[], tolerance: number}[] = [];
 
-        pointsForPreview.forEach(point => {
+        pointsForWand.forEach(point => {
           const { x: startX, y: startY } = point;
           const startIdx = (startY * naturalWidth + startX) * 4;
           const r = imageData[startIdx];
@@ -239,7 +237,7 @@ export function CanvasArea({
             }
         };
 
-        if (contiguous && pointsForPreview.length > 0) {
+        if (contiguous && pointsForWand.length > 0) {
             let head = 0;
             while (head < queue.length) {
                 const [x, y] = queue[head++]!;
@@ -392,70 +390,56 @@ export function CanvasArea({
           colorSpace: wandSettings.colorSpace,
           tolerance: wandSettings.tolerance,
       };
-      setAvoidancePoints(prev => {
-        const newPoints = [...prev, newAvoidancePoint];
-        setLastClickedPoint({ type: 'avoid', index: newPoints.length - 1 });
-        return newPoints;
-      });
+      setAvoidancePoints(prev => [...prev, newAvoidancePoint]);
       toast({ title: 'Avoidance point added.' });
     } else if (event.shiftKey) {
-      setSeedPoints(prev => {
-        const newPoints = [...prev, { ...coords, tolerance: wandSettings.tolerance }];
-        setLastClickedPoint({ type: 'seed', index: newPoints.length - 1 });
-        return newPoints;
-      });
+      setSeedPoints(prev => [...prev, { ...coords, tolerance: wandSettings.tolerance }]);
       toast({ title: 'Seed point added.' });
     } else {
-      setSeedPoints(() => {
-          const newPoints = [{ ...coords, tolerance: wandSettings.tolerance }];
-          setLastClickedPoint({ type: 'seed', index: 0 });
-          return newPoints;
-      });
+      setSeedPoints(() => [{ ...coords, tolerance: wandSettings.tolerance }]);
       setAvoidancePoints([]);
     }
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (activeTool !== 'wand') return;
+    if (activeTool !== 'wand' || !lastMousePosition) return;
     event.preventDefault(); 
     
-    if (!lastClickedPoint) {
-      const change = event.deltaY < 0 ? 1 : -1;
-      setWandSettings(prevSettings => {
-          const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
-          if (newTolerance === prevSettings.tolerance) return prevSettings;
-          return { ...prevSettings, tolerance: newTolerance };
-      });
-      return;
-    }
-
     const change = event.deltaY < 0 ? 1 : -1;
+    const HOVER_RADIUS = 5; // Natural pixels
+
+    let pointFound = false;
+
+    const newSeedPoints = seedPoints.map(p => {
+        const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
+        if (distance < HOVER_RADIUS) {
+            pointFound = true;
+            return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
+        }
+        return p;
+    });
+    setSeedPoints(newSeedPoints);
+
+    if (pointFound) return;
+
+    const newAvoidancePoints = avoidancePoints.map(p => {
+        const distance = Math.sqrt(Math.pow(p.x - lastMousePosition.x, 2) + Math.pow(p.y - lastMousePosition.y, 2));
+        if (distance < HOVER_RADIUS) {
+            pointFound = true;
+            return { ...p, tolerance: Math.max(0, Math.min(255, p.tolerance + change)) };
+        }
+        return p;
+    });
+    setAvoidancePoints(newAvoidancePoints);
+
+    if (pointFound) return;
     
-    if (lastClickedPoint.type === 'seed') {
-        setSeedPoints(prev =>
-            prev.map((point, index) => {
-                if (index === lastClickedPoint.index) {
-                    return {
-                        ...point,
-                        tolerance: Math.max(0, Math.min(255, point.tolerance + change)),
-                    };
-                }
-                return point;
-            })
-        );
-    } else if (lastClickedPoint.type === 'avoid') {
-        setAvoidancePoints(prev =>
-            prev.map((point, index) => {
-                if (index === lastClickedPoint.index) {
-                    return {
-                        ...point,
-                        tolerance: Math.max(0, Math.min(255, point.tolerance + change)),
-                    };
-                }
-                return point;
-            })
-        );
-    }
+    // If no point was hovered, adjust global tolerance
+    setWandSettings(prevSettings => {
+        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
+        if (newTolerance === prevSettings.tolerance) return prevSettings;
+        return { ...prevSettings, tolerance: newTolerance };
+    });
   };
 
   const setCanvasSize = useCallback(() => {
@@ -589,5 +573,3 @@ export function CanvasArea({
     </Card>
   );
 }
-
-    
