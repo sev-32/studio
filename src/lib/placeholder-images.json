@@ -1,3 +1,28 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "green-screen-person",
+      "description": "Person in front of a green screen, ideal for testing background removal.",
+      "imageUrl": "https://images.unsplash.com/photo-1730288951113-9cc087c14b83?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxwZXJzb24lMjBncmVlbnNjcmVlbnxlbnwwfHx8fDE3NTg5ODkzNTN8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person greenscreen"
+    },
+    {
+      "id": "brick-wall",
+      "description": "A close-up of a brick wall, useful for texture segmentation.",
+      "imageUrl": "https://images.unsplash.com/photo-1547056961-3c25e9140b05?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxicmljayUyMHdhbGx8ZW58MHx8fHwxNzU4OTcwNzgxfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "brick wall"
+    },
+    {
+      "id": "sky-landscape",
+      "description": "A landscape with a clear sky, good for simple color-based segmentation.",
+      "imageUrl": "https://images.unsplash.com/photo-1459382421372-e53a1e0f9266?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxza3klMjBsYW5kc2NhcGV8ZW58MHx8fHwxNzU4OTYyOTA5fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "sky landscape"
+    },
+    {
+      "id": "fruit-bowl",
+      "description": "A bowl of various fruits, presenting a multi-object segmentation challenge.",
+      "imageUrl": "https://images.unsplash.com/photo-1545135933-53630a9f3537?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxmcnVpdCUyMGJvd2x8ZW58MHx8fHwxNzU4OTcwNjQxfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "fruit bowl"
+    }
+  ]
 }
