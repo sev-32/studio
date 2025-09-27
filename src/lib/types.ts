@@ -12,3 +12,16 @@ export interface MagicLassoSettings {
   elasticity: number;
   costFunction: string;
 }
+
+export interface Preset {
+  category: string;
+  space: string;
+  ranges: {
+    [key: string]: number[];
+  };
+  tolerance: number;
+  glcm?: {
+    [key: string]: number[];
+  };
+  radius?: number;
+}

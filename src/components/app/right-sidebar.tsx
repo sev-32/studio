@@ -4,6 +4,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
@@ -25,6 +26,8 @@ interface RightSidebarProps {
   setWandSettings: Dispatch<SetStateAction<MagicWandSettings>>;
   lassoSettings: MagicLassoSettings;
   setLassoSettings: Dispatch<SetStateAction<MagicLassoSettings>>;
+  autoDetectMode: boolean;
+  setAutoDetectMode: Dispatch<SetStateAction<boolean>>;
 }
 
 export function RightSidebar({
@@ -33,19 +36,37 @@ export function RightSidebar({
   setWandSettings,
   lassoSettings,
   setLassoSettings,
+  autoDetectMode,
+  setAutoDetectMode,
 }: RightSidebarProps) {
   return (
     <SidebarContent>
+      <SidebarGroup>
+        <SidebarGroupLabel className="font-headline">
+          Detection Mode
+        </SidebarGroupLabel>
+        <div className="flex items-center justify-between p-2">
+          <Label htmlFor="auto-detect-mode">Auto-Detect Mode</Label>
+          <Switch
+            id="auto-detect-mode"
+            checked={autoDetectMode}
+            onCheckedChange={setAutoDetectMode}
+          />
+        </div>
+      </SidebarGroup>
+      <SidebarSeparator />
       {activeTool === 'wand' && (
         <MagicWandSettings
           settings={wandSettings}
           setSettings={setWandSettings}
+          disabled={autoDetectMode}
         />
       )}
       {activeTool === 'lasso' && (
         <MagicLassoSettings
           settings={lassoSettings}
           setSettings={setLassoSettings}
+          disabled={autoDetectMode}
         />
       )}
     </SidebarContent>
@@ -55,9 +76,11 @@ export function RightSidebar({
 function MagicWandSettings({
   settings,
   setSettings,
+  disabled,
 }: {
   settings: MagicWandSettings;
   setSettings: Dispatch<SetStateAction<MagicWandSettings>>;
+  disabled: boolean;
 }) {
   return (
     <SidebarGroup>
@@ -66,7 +89,12 @@ function MagicWandSettings({
       </SidebarGroupLabel>
       <div className="space-y-6 p-2">
         <div className="space-y-3">
-          <Label htmlFor="tolerance">Tolerance</Label>
+          <Label
+            htmlFor="tolerance"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Tolerance
+          </Label>
           <div className="flex items-center gap-4">
             <Slider
               id="tolerance"
@@ -76,6 +104,7 @@ function MagicWandSettings({
               }
               max={100}
               step={1}
+              disabled={disabled}
             />
             <span className="w-12 text-right text-sm text-muted-foreground">
               {settings.tolerance}
@@ -83,22 +112,34 @@ function MagicWandSettings({
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <Label htmlFor="contiguous">Contiguous</Label>
+          <Label
+            htmlFor="contiguous"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Contiguous
+          </Label>
           <Switch
             id="contiguous"
             checked={settings.contiguous}
             onCheckedChange={(checked) =>
               setSettings((s) => ({ ...s, contiguous: checked }))
             }
+            disabled={disabled}
           />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="color-space">Color Space</Label>
+          <Label
+            htmlFor="color-space"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Color Space
+          </Label>
           <Select
             value={settings.colorSpace}
             onValueChange={(value) =>
               setSettings((s) => ({ ...s, colorSpace: value }))
             }
+            disabled={disabled}
           >
             <SelectTrigger id="color-space">
               <SelectValue placeholder="Select color space" />
@@ -112,12 +153,18 @@ function MagicWandSettings({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="connectivity">Connectivity</Label>
+          <Label
+            htmlFor="connectivity"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Connectivity
+          </Label>
           <Select
             value={settings.connectivity}
             onValueChange={(value) =>
               setSettings((s) => ({ ...s, connectivity: value }))
             }
+            disabled={disabled}
           >
             <SelectTrigger id="connectivity">
               <SelectValue placeholder="Select connectivity" />
@@ -136,9 +183,11 @@ function MagicWandSettings({
 function MagicLassoSettings({
   settings,
   setSettings,
+  disabled,
 }: {
   settings: MagicLassoSettings;
   setSettings: Dispatch<SetStateAction<MagicLassoSettings>>;
+  disabled: boolean;
 }) {
   return (
     <SidebarGroup>
@@ -147,7 +196,12 @@ function MagicLassoSettings({
       </SidebarGroupLabel>
       <div className="space-y-4 p-2">
         <div className="space-y-3">
-          <Label htmlFor="node-drop-time">Node Drop Time (ms)</Label>
+          <Label
+            htmlFor="node-drop-time"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Node Drop Time (ms)
+          </Label>
           <Input
             id="node-drop-time"
             type="number"
@@ -158,10 +212,16 @@ function MagicLassoSettings({
                 nodeDropTime: parseInt(e.target.value, 10),
               }))
             }
+            disabled={disabled}
           />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="elasticity">Elasticity</Label>
+          <Label
+            htmlFor="elasticity"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Elasticity
+          </Label>
           <div className="flex items-center gap-4">
             <Slider
               id="elasticity"
@@ -171,6 +231,7 @@ function MagicLassoSettings({
               }
               max={1}
               step={0.1}
+              disabled={disabled}
             />
             <span className="w-12 text-right text-sm text-muted-foreground">
               {settings.elasticity.toFixed(1)}
@@ -178,12 +239,18 @@ function MagicLassoSettings({
           </div>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="cost-fn">Cost Function</Label>
+          <Label
+            htmlFor="cost-fn"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Cost Function
+          </Label>
           <Select
             value={settings.costFunction}
             onValueChange={(value) =>
               setSettings((s) => ({ ...s, costFunction: value }))
             }
+            disabled={disabled}
           >
             <SelectTrigger id="cost-fn">
               <SelectValue placeholder="Select cost function" />

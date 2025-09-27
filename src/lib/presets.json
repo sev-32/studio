@@ -1,0 +1,64 @@
+{
+  "presets": [
+    {
+      "category": "skin",
+      "space": "hsv",
+      "ranges": {
+        "h": [0, 50],
+        "s": [58, 174],
+        "v": [89, 255]
+      },
+      "tolerance": 25
+    },
+    {
+      "category": "green_screen",
+      "space": "hsv",
+      "ranges": {
+        "h": [60, 140],
+        "s": [100, 255],
+        "v": [50, 255]
+      },
+      "tolerance": 40
+    },
+    {
+      "category": "white_bg",
+      "space": "lab",
+      "ranges": {
+        "l": [70, 100]
+      },
+      "tolerance": 15
+    },
+    {
+      "category": "trees",
+      "space": "hsv",
+      "ranges": {
+        "h": [30, 90]
+      },
+      "glcm": {
+        "contrast": [5, 20]
+      },
+      "tolerance": 35
+    },
+    {
+      "category": "water",
+      "space": "hsv",
+      "ranges": {
+        "h": [180, 250]
+      },
+      "glcm": {
+        "homogeneity": [0.7, 1]
+      },
+      "tolerance": 20
+    },
+    {
+      "category": "clouds",
+      "space": "lab",
+      "ranges": {
+        "l": [60, 90],
+        "a": [-10, 10],
+        "b": [-10, 10]
+      },
+      "tolerance": 25
+    }
+  ]
+}

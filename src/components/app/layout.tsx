@@ -16,6 +16,7 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 export function AppLayout() {
   const [activeTool, setActiveTool] = useState<Tool>('wand');
   const [currentImage, setCurrentImage] = useState(PlaceHolderImages[0]);
+  const [autoDetectMode, setAutoDetectMode] = useState(true);
   const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
     tolerance: 30,
     contiguous: true,
@@ -43,6 +44,8 @@ export function AppLayout() {
                 setCurrentImage={setCurrentImage}
                 activeTool={activeTool}
                 wandSettings={wandSettings}
+                setWandSettings={setWandSettings}
+                autoDetectMode={autoDetectMode}
               />
               <AnalyticsPanel />
             </main>
@@ -55,6 +58,8 @@ export function AppLayout() {
               setWandSettings={setWandSettings}
               lassoSettings={lassoSettings}
               setLassoSettings={setLassoSettings}
+              autoDetectMode={autoDetectMode}
+              setAutoDetectMode={setAutoDetectMode}
             />
           </Sidebar>
         </div>
