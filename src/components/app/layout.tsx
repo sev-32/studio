@@ -8,7 +8,6 @@ import {
 import { LeftSidebar } from './left-sidebar';
 import { RightSidebar } from './right-sidebar';
 import { CanvasArea } from './canvas-area';
-import { AnalyticsPanel } from './analytics-panel';
 import type { MagicLassoSettings, MagicWandSettings, Tool } from '@/lib/types';
 import { useState } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -37,8 +36,8 @@ export function AppLayout() {
             <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} />
           </Sidebar>
 
-          <SidebarInset className="flex flex-col">
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          <SidebarInset className="flex flex-col !p-0 !m-0">
+            <main className="flex-1 overflow-hidden h-full">
               <CanvasArea
                 currentImage={currentImage}
                 setCurrentImage={setCurrentImage}

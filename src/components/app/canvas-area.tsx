@@ -65,7 +65,7 @@ export function CanvasArea({
       settings: MagicWandSettings
     ) => {
       const image = imageRef.current;
-      if (!image) return;
+      if (!image || !image.complete || image.naturalWidth === 0) return;
 
       const ctx = targetCanvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
@@ -75,11 +75,7 @@ export function CanvasArea({
       if (!tempCtx) return;
       
       const { naturalWidth, naturalHeight } = image;
-      const { width, height } = image.getBoundingClientRect(); // Use rendered image size
-
-      // Adjust start coordinates based on rendered image size vs natural size
-      const scaledX = Math.floor(startX * (naturalWidth / width));
-      const scaledY = Math.floor(startY * (naturalHeight / height));
+      const { width, height } = targetCanvas; // Use canvas size which matches image render size
 
       tempCanvas.width = naturalWidth;
       tempCanvas.height = naturalHeight;
@@ -88,6 +84,8 @@ export function CanvasArea({
       try {
         tempCtx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
         const originalImageData = tempCtx.getImageData(0, 0, naturalWidth, naturalHeight);
+        
+        // Use a new image data for the mask, matching the render size
         const maskImageData = ctx.createImageData(width, height);
 
         const { tolerance, contiguous, colorSpace } = settings;
@@ -123,21 +121,22 @@ export function CanvasArea({
             }
         };
 
-        const startIdx = (scaledY * naturalWidth + scaledX) * 4;
+        const startIdx = (startY * naturalWidth + startX) * 4;
         const startR = imageData[startIdx];
         const startG = imageData[startIdx + 1];
         const startB = imageData[startIdx + 2];
         const startColor = convertColor(startR, startG, startB);
 
-        const queue: [number, number][] = [[scaledX, scaledY]];
+        const queue: [number, number][] = [[startX, startY]];
         
-        if (visited[scaledY * naturalWidth + scaledX]) return;
-        visited[scaledY * naturalWidth + scaledX] = 1;
+        if (visited[startY * naturalWidth + startX]) return;
+        visited[startY * naturalWidth + startX] = 1;
 
         let head = 0;
         while (head < queue.length) {
             const [x, y] = queue[head++]!;
              
+            // Scale natural coords to render coords for drawing on mask
             const renderX = Math.floor(x * (width / naturalWidth));
             const renderY = Math.floor(y * (height / naturalHeight));
             const maskDataIndex = (renderY * width + renderX) * 4;
@@ -168,9 +167,28 @@ export function CanvasArea({
 
                     if (distance <= tolerance) {
                         visited[neighborIndex] = 1;
-                        queue.push([nx, ny]);
+                        if (contiguous) {
+                          queue.push([nx, ny]);
+                        }
                     }
                 }
+            }
+            if (!contiguous) {
+              for(let i=0; i<naturalWidth*naturalHeight; i++){
+                if (!visited[i]) {
+                  const r = imageData[i*4];
+                  const g = imageData[i*4+1];
+                  const b = imageData[i*4+2];
+                  const neighborColor = convertColor(r, g, b);
+                  const distance = getDistance(startColor, neighborColor);
+                  if (distance <= tolerance) {
+                    visited[i] = 1;
+                    const x = i % naturalWidth;
+                    const y = Math.floor(i/naturalWidth);
+                    queue.push([x,y])
+                  }
+                }
+              }
             }
         }
         
@@ -199,19 +217,41 @@ export function CanvasArea({
   
   const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
     const image = imageRef.current;
-    if (!image) return null;
+    const container = event.currentTarget;
+    if (!image || !container || !image.complete || image.naturalWidth === 0) return null;
     
-    const containerRect = event.currentTarget.getBoundingClientRect();
-    const imageRect = image.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const { naturalWidth, naturalHeight } = image;
+    
+    const containerAspect = containerRect.width / containerRect.height;
+    const imageAspect = naturalWidth / naturalHeight;
 
-    const x = event.clientX - imageRect.left;
-    const y = event.clientY - imageRect.top;
+    let renderedWidth, renderedHeight, offsetX, offsetY;
 
-    if (x < 0 || x >= imageRect.width || y < 0 || y >= imageRect.height) {
+    if (containerAspect > imageAspect) { // Container is wider than the image
+      renderedHeight = containerRect.height;
+      renderedWidth = renderedHeight * imageAspect;
+      offsetY = 0;
+      offsetX = (containerRect.width - renderedWidth) / 2;
+    } else { // Container is taller than or same aspect as the image
+      renderedWidth = containerRect.width;
+      renderedHeight = renderedWidth / imageAspect;
+      offsetX = 0;
+      offsetY = (containerRect.height - renderedHeight) / 2;
+    }
+
+    const clientX = event.clientX - containerRect.left - offsetX;
+    const clientY = event.clientY - containerRect.top - offsetY;
+
+    if (clientX < 0 || clientX >= renderedWidth || clientY < 0 || clientY >= renderedHeight) {
         return null; // Mouse is outside the actual image
     }
+
+    // Scale client coords to natural image coords
+    const naturalX = Math.floor(clientX * (naturalWidth / renderedWidth));
+    const naturalY = Math.floor(clientY * (naturalHeight / renderedHeight));
     
-    return { x, y };
+    return { x: naturalX, y: naturalY };
   }
 
   // Rerun wand selection when settings change
@@ -224,7 +264,9 @@ export function CanvasArea({
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
     const coords = getScaledCoords(event);
-    setLastMousePosition(coords);
+    if(coords) {
+      setLastMousePosition(coords);
+    }
   };
   
   const handleMouseLeave = () => {
@@ -245,7 +287,7 @@ export function CanvasArea({
     if (activeTool !== 'wand') return;
     event.preventDefault(); // Prevent page scrolling
 
-    const change = event.deltaY < 0 ? 5 : -5;
+    const change = event.deltaY < 0 ? 1 : -1;
     setWandSettings(prevSettings => {
         const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
         if (newTolerance === prevSettings.tolerance) return prevSettings;
@@ -255,15 +297,30 @@ export function CanvasArea({
 
   const setCanvasSize = useCallback(() => {
     const image = imageRef.current;
+    const container = image?.parentElement;
     const selectionCanvas = selectionCanvasRef.current;
     const previewCanvas = previewCanvasRef.current;
     
-    if (image && selectionCanvas && previewCanvas) {
-      const { width, height } = image.getBoundingClientRect();
-      selectionCanvas.width = width;
-      selectionCanvas.height = height;
-      previewCanvas.width = width;
-      previewCanvas.height = height;
+    if (image && container && selectionCanvas && previewCanvas && image.complete && image.naturalWidth > 0) {
+      const { naturalWidth, naturalHeight } = image;
+      const containerRect = container.getBoundingClientRect();
+      const containerAspect = containerRect.width / containerRect.height;
+      const imageAspect = naturalWidth / naturalHeight;
+
+      let renderedWidth, renderedHeight;
+
+      if (containerAspect > imageAspect) {
+        renderedHeight = containerRect.height;
+        renderedWidth = renderedHeight * imageAspect;
+      } else {
+        renderedWidth = containerRect.width;
+        renderedHeight = renderedWidth / imageAspect;
+      }
+
+      selectionCanvas.width = renderedWidth;
+      selectionCanvas.height = renderedHeight;
+      previewCanvas.width = renderedWidth;
+      previewCanvas.height = renderedHeight;
 
       // When the image loads or changes, ensure we re-run any existing preview
        if (lastMousePosition) {
@@ -281,10 +338,14 @@ export function CanvasArea({
     const resizeObserver = new ResizeObserver(() => {
         setCanvasSize();
     });
-    resizeObserver.observe(imageEl);
-
+    if (imageEl.parentElement) {
+      resizeObserver.observe(imageEl.parentElement);
+    }
+    
     // Initial size set
-    setCanvasSize();
+    if (imageEl.complete) {
+      setCanvasSize();
+    }
     
     return () => {
         resizeObserver.disconnect();
@@ -292,7 +353,7 @@ export function CanvasArea({
   }, [setCanvasSize]);
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="space-y-1.5">
           <CardTitle className="font-headline">Canvas</CardTitle>
@@ -320,9 +381,9 @@ export function CanvasArea({
           </DropdownMenuContent>
         </DropdownMenu>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 flex items-center justify-center p-0 m-2">
         <div
-          className="relative aspect-video w-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary flex justify-center items-center"
+          className="relative w-full h-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary flex justify-center items-center"
           onClick={handleCanvasClick}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
