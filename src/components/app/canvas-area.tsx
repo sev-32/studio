@@ -38,7 +38,6 @@ export function CanvasArea({
   activeTool,
   wandSettings,
   setWandSettings,
-  autoDetectMode,
 }: CanvasAreaProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,7 +75,7 @@ export function CanvasArea({
       if (!tempCtx) return;
       
       const { naturalWidth, naturalHeight } = image;
-      const { width, height } = targetCanvas;
+      const { width, height } = image.getBoundingClientRect(); // Use rendered image size
 
       // Adjust start coordinates based on rendered image size vs natural size
       const scaledX = Math.floor(startX * (naturalWidth / width));
@@ -94,8 +93,7 @@ export function CanvasArea({
         const { tolerance, contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
         const maskData = maskImageData.data;
-        const maskVisited = new Uint8Array(width * height);
-
+        const visited = new Uint8Array(naturalWidth * naturalHeight);
 
         const getDistance = (c1: number[], c2: number[]) => {
             if (colorSpace === 'hsv') {
@@ -125,7 +123,6 @@ export function CanvasArea({
             }
         };
 
-
         const startIdx = (scaledY * naturalWidth + scaledX) * 4;
         const startR = imageData[startIdx];
         const startG = imageData[startIdx + 1];
@@ -133,23 +130,18 @@ export function CanvasArea({
         const startColor = convertColor(startR, startG, startB);
 
         const queue: [number, number][] = [[scaledX, scaledY]];
-        const visited = new Uint8Array(naturalWidth * naturalHeight);
+        
+        if (visited[scaledY * naturalWidth + scaledX]) return;
         visited[scaledY * naturalWidth + scaledX] = 1;
 
-
-        while (queue.length > 0) {
-            const [x, y] = queue.shift()!;
+        let head = 0;
+        while (head < queue.length) {
+            const [x, y] = queue[head++]!;
              
             const renderX = Math.floor(x * (width / naturalWidth));
             const renderY = Math.floor(y * (height / naturalHeight));
-            const maskIndex = (renderY * width + renderX);
+            const maskDataIndex = (renderY * width + renderX) * 4;
 
-            if (maskVisited[maskIndex]) {
-              continue;
-            }
-            maskVisited[maskIndex] = 1;
-
-            const maskDataIndex = maskIndex * 4;
             maskData[maskDataIndex] = 50;
             maskData[maskDataIndex + 1] = 150;
             maskData[maskDataIndex + 2] = 255;
@@ -165,7 +157,6 @@ export function CanvasArea({
                     if (visited[neighborIndex]) {
                         continue;
                     }
-                    visited[neighborIndex] = 1;
                     
                     const dataIndex = neighborIndex * 4;
                     const r = imageData[dataIndex];
@@ -176,6 +167,7 @@ export function CanvasArea({
                     const distance = getDistance(startColor, neighborColor);
 
                     if (distance <= tolerance) {
+                        visited[neighborIndex] = 1;
                         queue.push([nx, ny]);
                     }
                 }
@@ -205,6 +197,23 @@ export function CanvasArea({
     [toast]
   );
   
+  const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
+    const image = imageRef.current;
+    if (!image) return null;
+    
+    const containerRect = event.currentTarget.getBoundingClientRect();
+    const imageRect = image.getBoundingClientRect();
+
+    const x = event.clientX - imageRect.left;
+    const y = event.clientY - imageRect.top;
+
+    if (x < 0 || x >= imageRect.width || y < 0 || y >= imageRect.height) {
+        return null; // Mouse is outside the actual image
+    }
+    
+    return { x, y };
+  }
+
   // Rerun wand selection when settings change
   useEffect(() => {
     if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) return;
@@ -214,15 +223,8 @@ export function CanvasArea({
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
-    const canvas = previewCanvasRef.current;
-     if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor(event.clientX - rect.left);
-    const y = Math.floor(event.clientY - rect.top);
-    setLastMousePosition({x, y});
-
-    // The useEffect will handle calling performMagicWand
+    const coords = getScaledCoords(event);
+    setLastMousePosition(coords);
   };
   
   const handleMouseLeave = () => {
@@ -233,35 +235,39 @@ export function CanvasArea({
   const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand' || !selectionCanvasRef.current || !previewCanvasRef.current) return;
     
-    const selectionCtx = selectionCanvasRef.current.getContext('2d');
-    if (!selectionCtx) return;
-
-    // "Commit" the preview canvas to the main selection canvas
-    selectionCtx.drawImage(previewCanvasRef.current, 0, 0);
+    const coords = getScaledCoords(event);
+    if (!coords) return;
+    
+    performMagicWand(selectionCanvasRef.current!, coords.x, coords.y, wandSettings);
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
     event.preventDefault(); // Prevent page scrolling
 
+    const change = event.deltaY < 0 ? 5 : -5;
     setWandSettings(prevSettings => {
-        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance - Math.sign(event.deltaY) * 5));
+        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
+        if (newTolerance === prevSettings.tolerance) return prevSettings;
         return { ...prevSettings, tolerance: newTolerance };
     });
   };
 
   const setCanvasSize = useCallback(() => {
-    const container = imageRef.current?.parentElement;
-    if (container && selectionCanvasRef.current && previewCanvasRef.current && imageRef.current) {
-      const { width, height } = container.getBoundingClientRect();
-      selectionCanvasRef.current.width = width;
-      selectionCanvasRef.current.height = height;
-      previewCanvasRef.current.width = width;
-      previewCanvasRef.current.height = height;
+    const image = imageRef.current;
+    const selectionCanvas = selectionCanvasRef.current;
+    const previewCanvas = previewCanvasRef.current;
+    
+    if (image && selectionCanvas && previewCanvas) {
+      const { width, height } = image.getBoundingClientRect();
+      selectionCanvas.width = width;
+      selectionCanvas.height = height;
+      previewCanvas.width = width;
+      previewCanvas.height = height;
 
       // When the image loads or changes, ensure we re-run any existing preview
        if (lastMousePosition) {
-           performMagicWand(previewCanvasRef.current, lastMousePosition.x, lastMousePosition.y, wandSettings);
+           performMagicWand(previewCanvas, lastMousePosition.x, lastMousePosition.y, wandSettings);
        }
     }
   }, [lastMousePosition, wandSettings, performMagicWand]);
@@ -275,8 +281,11 @@ export function CanvasArea({
     const resizeObserver = new ResizeObserver(() => {
         setCanvasSize();
     });
-    resizeObserver.observe(imageEl.parentElement!);
+    resizeObserver.observe(imageEl);
 
+    // Initial size set
+    setCanvasSize();
+    
     return () => {
         resizeObserver.disconnect();
     }
@@ -313,7 +322,7 @@ export function CanvasArea({
       </CardHeader>
       <CardContent>
         <div
-          className="relative aspect-video w-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary"
+          className="relative aspect-video w-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary flex justify-center items-center"
           onClick={handleCanvasClick}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -332,13 +341,13 @@ export function CanvasArea({
           />
           <canvas
             ref={selectionCanvasRef}
-            className="absolute left-0 top-0 h-full w-full object-contain"
-            style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+            className="absolute object-contain pointer-events-none"
+            style={{ imageRendering: 'pixelated' }}
           />
           <canvas
             ref={previewCanvasRef}
-            className="absolute left-0 top-0 h-full w-full object-contain opacity-75"
-            style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+            className="absolute object-contain opacity-75 pointer-events-none"
+            style={{ imageRendering: 'pixelated' }}
           />
         </div>
       </CardContent>
