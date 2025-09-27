@@ -76,7 +76,7 @@ export function AppLayout() {
     <SidebarProvider>
       <div className="flex h-screen w-full flex-col">
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar side="left">
+          <Sidebar side="left" collapsible="icon">
             <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} onClearPoints={handleClearPoints} />
           </Sidebar>
 

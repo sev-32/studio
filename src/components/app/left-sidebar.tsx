@@ -36,7 +36,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
     <>
       <SidebarHeader className="flex items-center justify-between p-2">
         <h1 className="font-headline text-2xl font-bold text-primary">
-          Segmentify
+          S
         </h1>
         <SidebarTrigger />
       </SidebarHeader>
@@ -49,7 +49,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Magic Wand (W)"
             >
               <Wand2 />
-              <span>Magic Wand</span>
+              <span className="sr-only">Magic Wand</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -59,7 +59,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Magic Lasso (L)"
             >
               <Lasso />
-              <span>Magic Lasso</span>
+              <span className="sr-only">Magic Lasso</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -69,7 +69,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Layers (C)"
             >
               <Layers />
-              <span>Layers</span>
+              <span className="sr-only">Layers</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -78,7 +78,7 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
               tooltip="Clear Points (Esc)"
             >
               <Undo2 />
-              <span>Clear Points</span>
+              <span className="sr-only">Clear Points</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -86,15 +86,15 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton>
+            <SidebarMenuButton tooltip="Settings">
               <Settings />
-              <span>Settings</span>
+              <span className="sr-only">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton>
+            <SidebarMenuButton tooltip="Account">
               <UserCircle />
-              <span>Account</span>
+              <span className="sr-only">Account</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -26,7 +26,6 @@ import {
   SegmentGroup,
 } from '@/lib/types';
 import type { Dispatch, SetStateAction } from 'react';
-import { AnalyticsPanel } from './analytics-panel';
 import { ScrollArea } from '../ui/scroll-area';
 import { Eye, EyeOff, Plus, Trash2, MinusCircle } from 'lucide-react';
 
@@ -63,9 +62,6 @@ export function RightSidebar({
 }: RightSidebarProps) {
   return (
     <SidebarContent>
-      <AnalyticsPanel />
-      <SidebarSeparator />
-      
       <LayersPanel 
         segmentGroups={segmentGroups}
         setSegmentGroups={setSegmentGroups}
