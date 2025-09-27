@@ -56,14 +56,14 @@ export function RightSidebar({
       </SidebarGroup>
       <SidebarSeparator />
       {activeTool === 'wand' && (
-        <MagicWandSettings
+        <MagicWandSettingsComponent
           settings={wandSettings}
           setSettings={setWandSettings}
           disabled={autoDetectMode}
         />
       )}
       {activeTool === 'lasso' && (
-        <MagicLassoSettings
+        <MagicLassoSettingsComponent
           settings={lassoSettings}
           setSettings={setLassoSettings}
           disabled={autoDetectMode}
@@ -73,7 +73,7 @@ export function RightSidebar({
   );
 }
 
-function MagicWandSettings({
+function MagicWandSettingsComponent({
   settings,
   setSettings,
   disabled,
@@ -148,7 +148,7 @@ function MagicWandSettings({
               <SelectItem value="rgb">RGB</SelectItem>
               <SelectItem value="hsv">HSV</SelectItem>
               <SelectItem value="lab">LAB</SelectItem>
-              <SelectItem value="quaternion">Quaternion</SelectItem>
+              <SelectItem value="quaternion">Quaternion (experimental)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -180,7 +180,7 @@ function MagicWandSettings({
   );
 }
 
-function MagicLassoSettings({
+function MagicLassoSettingsComponent({
   settings,
   setSettings,
   disabled,

@@ -18,10 +18,10 @@ import { ChevronDown, Image as ImageIcon } from 'lucide-react';
 import type { ImagePlaceholder } from '@/lib/placeholder-images';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import type { Dispatch, SetStateAction, MouseEvent, WheelEvent } from 'react';
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import type { MagicWandSettings, Tool } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Presets } from '@/lib/presets';
+import { colorConverters } from '@/lib/color-converters';
 
 interface CanvasAreaProps {
   currentImage: ImagePlaceholder;
@@ -44,6 +44,7 @@ export function CanvasArea({
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+  const [lastMousePosition, setLastMousePosition] = useState<{x: number, y: number} | null>(null);
 
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
@@ -73,71 +74,111 @@ export function CanvasArea({
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       if (!tempCtx) return;
-
+      
+      const { naturalWidth, naturalHeight } = image;
       const { width, height } = targetCanvas;
-      tempCanvas.width = width;
-      tempCanvas.height = height;
+
+      // Adjust start coordinates based on rendered image size vs natural size
+      const scaledX = Math.floor(startX * (naturalWidth / width));
+      const scaledY = Math.floor(startY * (naturalHeight / height));
+
+      tempCanvas.width = naturalWidth;
+      tempCanvas.height = naturalHeight;
+      
 
       try {
-        tempCtx.drawImage(image, 0, 0, width, height);
-        const originalImageData = tempCtx.getImageData(0, 0, width, height);
+        tempCtx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
+        const originalImageData = tempCtx.getImageData(0, 0, naturalWidth, naturalHeight);
         const maskImageData = ctx.createImageData(width, height);
 
-        const { tolerance, contiguous } = settings;
+        const { tolerance, contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
         const maskData = maskImageData.data;
+        const maskVisited = new Uint8Array(width * height);
 
-        const visited = new Uint8Array(width * height);
-        const stack = [[startX, startY]];
 
-        const startIdx = (startY * width + startX) * 4;
+        const getDistance = (c1: number[], c2: number[]) => {
+            if (colorSpace === 'hsv') {
+                const dh = Math.min(Math.abs(c1[0] - c2[0]), 360 - Math.abs(c1[0] - c2[0]));
+                const ds = Math.abs(c1[1] - c2[1]);
+                const dv = Math.abs(c1[2] - c2[2]);
+                // A weighted distance, hue is perceptually more significant
+                return Math.sqrt(dh * dh * 2 + ds * ds + dv * dv);
+            }
+             // For LAB and RGB, Euclidean distance works well
+            return Math.sqrt(
+                Math.pow(c1[0] - c2[0], 2) +
+                Math.pow(c1[1] - c2[1], 2) +
+                Math.pow(c1[2] - c2[2], 2)
+            );
+        };
+        
+        const convertColor = (r: number, g: number, b: number) => {
+            switch(colorSpace) {
+                case 'hsv': return colorConverters.rgbToHsv(r, g, b);
+                case 'lab': return colorConverters.rgbToLab(r, g, b);
+                case 'quaternion': // Placeholder
+                    return [r,g,b];
+                case 'rgb':
+                default:
+                    return [r, g, b];
+            }
+        };
+
+
+        const startIdx = (scaledY * naturalWidth + scaledX) * 4;
         const startR = imageData[startIdx];
         const startG = imageData[startIdx + 1];
         const startB = imageData[startIdx + 2];
+        const startColor = convertColor(startR, startG, startB);
 
-        const colorDistance = (r1: number, g1: number, b1: number, r2: number, g2: number, b2: number) => {
-          return Math.sqrt(
-            Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2)
-          );
-        };
+        const queue: [number, number][] = [[scaledX, scaledY]];
+        const visited = new Uint8Array(naturalWidth * naturalHeight);
+        visited[scaledY * naturalWidth + scaledX] = 1;
 
-        if (contiguous) {
-          while (stack.length > 0) {
-            const [x, y] = stack.pop()!;
-            if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
-            const index = y * width + x;
-            if (visited[index]) continue;
-            visited[index] = 1;
+        while (queue.length > 0) {
+            const [x, y] = queue.shift()!;
+             
+            const renderX = Math.floor(x * (width / naturalWidth));
+            const renderY = Math.floor(y * (height / naturalHeight));
+            const maskIndex = (renderY * width + renderX);
 
-            const dataIndex = index * 4;
-            const r = imageData[dataIndex];
-            const g = imageData[dataIndex + 1];
-            const b = imageData[dataIndex + 2];
-
-            const distance = colorDistance(r, g, b, startR, startG, startB);
-
-            if (distance <= tolerance) {
-              maskData[dataIndex] = 50;
-              maskData[dataIndex + 1] = 150;
-              maskData[dataIndex + 2] = 255;
-              maskData[dataIndex + 3] = 128;
-              stack.push([x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]);
+            if (maskVisited[maskIndex]) {
+              continue;
             }
-          }
-        } else {
-            for (let i = 0; i < imageData.length; i += 4) {
-              const r = imageData[i];
-              const g = imageData[i + 1];
-              const b = imageData[i + 2];
-              const distance = colorDistance(r, g, b, startR, startG, startB);
-      
-              if (distance <= tolerance) {
-                maskData[i] = 50;
-                maskData[i + 1] = 150;
-                maskData[i + 2] = 255;
-                maskData[i + 3] = 128;
-              }
+            maskVisited[maskIndex] = 1;
+
+            const maskDataIndex = maskIndex * 4;
+            maskData[maskDataIndex] = 50;
+            maskData[maskDataIndex + 1] = 150;
+            maskData[maskDataIndex + 2] = 255;
+            maskData[maskDataIndex + 3] = 128;
+
+            const neighbors = [
+                [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]
+            ];
+
+            for (const [nx, ny] of neighbors) {
+                if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
+                    const neighborIndex = ny * naturalWidth + nx;
+                    if (visited[neighborIndex]) {
+                        continue;
+                    }
+                    visited[neighborIndex] = 1;
+                    
+                    const dataIndex = neighborIndex * 4;
+                    const r = imageData[dataIndex];
+                    const g = imageData[dataIndex + 1];
+                    const b = imageData[dataIndex + 2];
+
+                    const neighborColor = convertColor(r, g, b);
+                    const distance = getDistance(startColor, neighborColor);
+
+                    if (distance <= tolerance) {
+                        queue.push([nx, ny]);
+                    }
+                }
             }
         }
         
@@ -163,20 +204,30 @@ export function CanvasArea({
     },
     [toast]
   );
+  
+  // Rerun wand selection when settings change
+  useEffect(() => {
+    if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) return;
+    performMagicWand(previewCanvasRef.current, lastMousePosition.x, lastMousePosition.y, wandSettings);
+  }, [wandSettings, activeTool, lastMousePosition, performMagicWand]);
+
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeTool !== 'wand' || !previewCanvasRef.current) return;
-
+    if (activeTool !== 'wand') return;
     const canvas = previewCanvasRef.current;
+     if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor(event.clientX - rect.left);
     const y = Math.floor(event.clientY - rect.top);
+    setLastMousePosition({x, y});
 
-    performMagicWand(canvas, x, y, wandSettings);
+    // The useEffect will handle calling performMagicWand
   };
   
   const handleMouseLeave = () => {
     clearCanvas(previewCanvasRef.current);
+    setLastMousePosition(null);
   };
 
   const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -191,24 +242,45 @@ export function CanvasArea({
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
-    event.preventDefault();
+    event.preventDefault(); // Prevent page scrolling
 
     setWandSettings(prevSettings => {
-        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance - Math.sign(event.deltaY)));
+        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance - Math.sign(event.deltaY) * 5));
         return { ...prevSettings, tolerance: newTolerance };
     });
   };
 
   const setCanvasSize = useCallback(() => {
     const container = imageRef.current?.parentElement;
-    if (container && selectionCanvasRef.current && previewCanvasRef.current) {
+    if (container && selectionCanvasRef.current && previewCanvasRef.current && imageRef.current) {
       const { width, height } = container.getBoundingClientRect();
       selectionCanvasRef.current.width = width;
       selectionCanvasRef.current.height = height;
       previewCanvasRef.current.width = width;
       previewCanvasRef.current.height = height;
+
+      // When the image loads or changes, ensure we re-run any existing preview
+       if (lastMousePosition) {
+           performMagicWand(previewCanvasRef.current, lastMousePosition.x, lastMousePosition.y, wandSettings);
+       }
     }
-  }, []);
+  }, [lastMousePosition, wandSettings, performMagicWand]);
+
+
+  useEffect(() => {
+    const imageEl = imageRef.current;
+    if (!imageEl) return;
+    
+    // Add event listener for resize to adjust canvas
+    const resizeObserver = new ResizeObserver(() => {
+        setCanvasSize();
+    });
+    resizeObserver.observe(imageEl.parentElement!);
+
+    return () => {
+        resizeObserver.disconnect();
+    }
+  }, [setCanvasSize]);
 
   return (
     <Card>
@@ -241,7 +313,7 @@ export function CanvasArea({
       </CardHeader>
       <CardContent>
         <div
-          className="relative aspect-[3/2] w-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary"
+          className="relative aspect-video w-full cursor-crosshair overflow-hidden rounded-lg border bg-secondary"
           onClick={handleCanvasClick}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -252,7 +324,7 @@ export function CanvasArea({
             src={currentImage.imageUrl}
             alt={currentImage.description}
             fill
-            className="object-cover"
+            className="object-contain"
             data-ai-hint={currentImage.imageHint}
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             crossOrigin="anonymous"
@@ -260,12 +332,12 @@ export function CanvasArea({
           />
           <canvas
             ref={selectionCanvasRef}
-            className="absolute left-0 top-0 h-full w-full object-cover"
+            className="absolute left-0 top-0 h-full w-full object-contain"
             style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
           />
           <canvas
             ref={previewCanvasRef}
-            className="absolute left-0 top-0 h-full w-full object-cover opacity-75"
+            className="absolute left-0 top-0 h-full w-full object-contain opacity-75"
             style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
           />
         </div>
