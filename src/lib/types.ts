@@ -16,11 +16,11 @@ export interface Preset {
   category: string;
   space: string;
   ranges: {
-    [key: string]: number[];
+    [key:string]: number[];
   };
   tolerance: number;
   glcm?: {
-    [key: string]: number[];
+    [key:string]: number[];
   };
   radius?: number;
 }

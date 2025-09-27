@@ -115,7 +115,7 @@ export function CanvasArea({
           naturalHeight
         );
 
-        const { tolerance, contiguous, colorSpace } = settings;
+        const { contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
         const maskImageData = targetCtx.createImageData(targetCanvas.width, targetCanvas.height);
         const maskData = maskImageData.data;
@@ -154,7 +154,7 @@ export function CanvasArea({
         };
         
         const queue: [number, number][] = [];
-        const startColors: number[][] = [];
+        const startColors: {color: number[], tolerance: number}[] = [];
 
         points.forEach(point => {
           const { x: startX, y: startY } = point;
@@ -162,7 +162,17 @@ export function CanvasArea({
           const r = imageData[startIdx];
           const g = imageData[startIdx + 1];
           const b = imageData[startIdx + 2];
-          startColors.push(convertColor(r, g, b));
+          
+          let tolerance = settings.tolerance;
+          if (lastClickedPoint && lastClickedPoint.type === 'seed' && points.length > lastClickedPoint.index){
+            // Special handling for multi-point tolerance will go here in the future
+          }
+
+          startColors.push({
+            color: convertColor(r,g,b), 
+            tolerance: tolerance
+          });
+
 
           if (visited[startY * naturalWidth + startX] === 0) {
               queue.push([startX, startY]);
@@ -203,8 +213,8 @@ export function CanvasArea({
 
             let isSimilar = false;
             for (const startColor of startColors) {
-                const distance = getDistance(startColor, pixelColor, colorSpace);
-                if (distance <= tolerance) {
+                const distance = getDistance(startColor.color, pixelColor, colorSpace);
+                if (distance <= startColor.tolerance) {
                     isSimilar = true;
                     break;
                 }
@@ -276,7 +286,7 @@ export function CanvasArea({
         }
       }
     },
-    [toast]
+    [toast, lastClickedPoint]
   );
   
   const getScaledCoords = (event: MouseEvent<HTMLDivElement>): SeedPoint | null => {
