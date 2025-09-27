@@ -73,9 +73,9 @@ export function AppLayout() {
 
 
   return (
-    <SidebarProvider>
-      <div className="flex h-screen w-full flex-col">
-        <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-screen w-full flex-col">
+      <div className="flex flex-1 overflow-hidden">
+        <SidebarProvider defaultOpen={false}>
           <LeftSidebar activeTool={activeTool} setActiveTool={setActiveTool} onClearPoints={handleClearPoints} />
           
           <main className="flex-1 overflow-hidden h-full">
@@ -96,7 +96,9 @@ export function AppLayout() {
                 onClearPoints={handleClearPoints}
               />
           </main>
+        </SidebarProvider>
 
+        <SidebarProvider>
           <Sidebar side="right">
             <RightSidebar
               activeTool={activeTool}
@@ -117,8 +119,8 @@ export function AppLayout() {
               }}
             />
           </Sidebar>
-        </div>
+        </SidebarProvider>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }

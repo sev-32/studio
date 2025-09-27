@@ -7,7 +7,6 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarTrigger,
   SidebarContent,
   SidebarFooter,
 } from '@/components/ui/sidebar';
@@ -39,9 +38,6 @@ export function LeftSidebar({ activeTool, setActiveTool, onClearPoints }: LeftSi
         <h1 className="font-headline text-2xl font-bold text-primary group-data-[state=expanded]:block hidden">
           S
         </h1>
-        <div className="group-data-[state=expanded]:-mr-2 group-data-[state=expanded]:block hidden">
-          <SidebarTrigger />
-        </div>
         <h1 className="font-headline text-2xl font-bold text-primary group-data-[state=collapsed]:block hidden">
           S
         </h1>
