@@ -62,7 +62,7 @@ export function CanvasArea({
     const x = Math.floor(event.clientX - rect.left);
     const y = Math.floor(event.clientY - rect.top);
 
-    // Draw the image to the canvas to get pixel data
+    // Draw the image to a temporary canvas to get pixel data without affecting the visible image
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
     if (!tempCtx) return;
@@ -70,50 +70,68 @@ export function CanvasArea({
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
     tempCtx.drawImage(imageRef.current!, 0, 0, canvas.width, canvas.height);
-
-    const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
-    const clickedPixelData = tempCtx.getImageData(x, y, 1, 1).data;
     
-    performMagicWand(imageData, x, y, clickedPixelData, wandSettings.tolerance);
+    // This is the imageData of the original image
+    const originalImageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height);
 
-    ctx.putImageData(imageData, 0, 0);
+    // This will be the mask we draw on top
+    const maskImageData = ctx.createImageData(canvas.width, canvas.height);
+
+    performMagicWand(originalImageData, maskImageData, x, y, wandSettings.tolerance);
+
+    // Clear previous selection and draw the new one
+    clearCanvas();
+    ctx.putImageData(maskImageData, 0, 0);
   };
   
-  const performMagicWand = (imageData: ImageData, startX: number, startY: number, targetColor: Uint8ClampedArray, tolerance: number) => {
-    const { width, height, data } = imageData;
+  const performMagicWand = (
+    image: ImageData,
+    mask: ImageData,
+    startX: number,
+    startY: number,
+    tolerance: number,
+  ) => {
+    const { width, height } = image;
+    const imageData = image.data;
+    const maskData = mask.data;
+
     const visited = new Uint8Array(width * height);
     const stack = [[startX, startY]];
-  
-    const [tr, tg, tb] = targetColor;
-  
-    const colorDistance = (r1: number, g1: number, b1: number, r2: number, g2: number, b2: number) => {
+    
+    const startIdx = (startY * width + startX) * 4;
+    const startR = imageData[startIdx];
+    const startG = imageData[startIdx + 1];
+    const startB = imageData[startIdx + 2];
+
+    const colorDistance = (
+      r1: number, g1: number, b1: number, 
+      r2: number, g2: number, b2: number
+    ) => {
       return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
     };
-
-    // Clear data for new selection, but make it transparent
-    for (let i = 3; i < data.length; i += 4) {
-      data[i] = 0;
-    }
   
     while (stack.length > 0) {
       const [x, y] = stack.pop()!;
   
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
   
-      const index = (y * width + x);
+      const index = y * width + x;
       if (visited[index]) continue;
       
-      visited[index] = 1; // Mark as visited
-  
       const dataIndex = index * 4;
-      const r = data[dataIndex];
-      const g = data[dataIndex + 1];
-      const b = data[dataIndex + 2];
+      const r = imageData[dataIndex];
+      const g = imageData[dataIndex + 1];
+      const b = imageData[dataIndex + 2];
   
-      const distance = colorDistance(r, g, b, tr, tg, tb);
+      const distance = colorDistance(r, g, b, startR, startG, startB);
   
       if (distance <= tolerance) {
-        data[dataIndex + 3] = 255; // Set alpha to full for selected pixels
+        visited[index] = 1; // Mark as visited
+        // Set selection color (e.g., semi-transparent blue)
+        maskData[dataIndex] = 50;     // R
+        maskData[dataIndex + 1] = 150; // G
+        maskData[dataIndex + 2] = 255; // B
+        maskData[dataIndex + 3] = 128; // Alpha
   
         stack.push([x + 1, y]);
         stack.push([x - 1, y]);
@@ -169,8 +187,17 @@ export function CanvasArea({
             crossOrigin="anonymous"
             onLoadingComplete={(img) => {
               if (canvasRef.current) {
-                canvasRef.current.width = img.naturalWidth;
-                canvasRef.current.height = img.naturalHeight;
+                // Set canvas dimensions based on the aspect ratio of the container
+                const container = canvasRef.current.parentElement;
+                if(container) {
+                    const { width, height } = container.getBoundingClientRect();
+                    canvasRef.current.width = width;
+                    canvasRef.current.height = height;
+
+                    // also resize the image to fit the container
+                    img.width = width;
+                    img.height = height;
+                }
               }
             }}
           />
