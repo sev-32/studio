@@ -4,7 +4,6 @@ export interface MagicWandSettings {
   tolerance: number;
   contiguous: boolean;
   colorSpace: string;
-  connectivity: string;
 }
 
 export interface MagicLassoSettings {
@@ -24,4 +23,23 @@ export interface Preset {
     [key: string]: number[];
   };
   radius?: number;
+}
+
+export interface SeedPoint {
+  x: number;
+  y: number;
+}
+
+export interface AvoidancePoint {
+  x: number;
+  y: number;
+  color: number[];
+  tolerance: number;
+}
+
+export interface Layer {
+    id: string;
+    name: string;
+    imageData: ImageData;
+    visible: boolean;
 }

@@ -8,7 +8,14 @@ import {
 import { LeftSidebar } from './left-sidebar';
 import { RightSidebar } from './right-sidebar';
 import { CanvasArea } from './canvas-area';
-import type { MagicLassoSettings, MagicWandSettings, Tool } from '@/lib/types';
+import type {
+  MagicLassoSettings,
+  MagicWandSettings,
+  Tool,
+  AvoidancePoint,
+  SeedPoint,
+  Layer,
+} from '@/lib/types';
 import { useState } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
@@ -20,13 +27,15 @@ export function AppLayout() {
     tolerance: 30,
     contiguous: true,
     colorSpace: 'rgb',
-    connectivity: '4',
   });
   const [lassoSettings, setLassoSettings] = useState<MagicLassoSettings>({
     nodeDropTime: 200,
     elasticity: 0.5,
     costFunction: 'sobel',
   });
+  const [seedPoints, setSeedPoints] = useState<SeedPoint[]>([]);
+  const [avoidancePoints, setAvoidancePoints] = useState<AvoidancePoint[]>([]);
+  const [layers, setLayers] = useState<Layer[]>([]);
 
   return (
     <SidebarProvider>
@@ -45,6 +54,10 @@ export function AppLayout() {
                 wandSettings={wandSettings}
                 setWandSettings={setWandSettings}
                 autoDetectMode={autoDetectMode}
+                seedPoints={seedPoints}
+                setSeedPoints={setSeedPoints}
+                avoidancePoints={avoidancePoints}
+                setAvoidancePoints={setAvoidancePoints}
               />
             </main>
           </SidebarInset>
@@ -58,6 +71,8 @@ export function AppLayout() {
               setLassoSettings={setLassoSettings}
               autoDetectMode={autoDetectMode}
               setAutoDetectMode={setAutoDetectMode}
+              layers={layers}
+              setLayers={setLayers}
             />
           </Sidebar>
         </div>

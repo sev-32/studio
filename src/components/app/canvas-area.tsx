@@ -19,7 +19,12 @@ import type { ImagePlaceholder } from '@/lib/placeholder-images';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import type { Dispatch, SetStateAction, MouseEvent, WheelEvent } from 'react';
 import { useRef, useEffect, useCallback, useState } from 'react';
-import type { MagicWandSettings, Tool } from '@/lib/types';
+import type {
+  MagicWandSettings,
+  Tool,
+  SeedPoint,
+  AvoidancePoint,
+} from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { colorConverters } from '@/lib/color-converters';
 
@@ -30,6 +35,10 @@ interface CanvasAreaProps {
   wandSettings: MagicWandSettings;
   setWandSettings: Dispatch<SetStateAction<MagicWandSettings>>;
   autoDetectMode: boolean;
+  seedPoints: SeedPoint[];
+  setSeedPoints: Dispatch<SetStateAction<SeedPoint[]>>;
+  avoidancePoints: AvoidancePoint[];
+  setAvoidancePoints: Dispatch<SetStateAction<AvoidancePoint[]>>;
 }
 
 export function CanvasArea({
@@ -38,12 +47,18 @@ export function CanvasArea({
   activeTool,
   wandSettings,
   setWandSettings,
+  seedPoints,
+  setSeedPoints,
+  avoidancePoints,
+  setAvoidancePoints,
 }: CanvasAreaProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
-  const [lastMousePosition, setLastMousePosition] = useState<{x: number, y: number} | null>(null);
+  const [lastMousePosition, setLastMousePosition] = useState<SeedPoint | null>(
+    null
+  );
 
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
@@ -55,53 +70,66 @@ export function CanvasArea({
   useEffect(() => {
     clearCanvas(selectionCanvasRef.current);
     clearCanvas(previewCanvasRef.current);
-  }, [currentImage]);
+    setSeedPoints([]);
+    setAvoidancePoints([]);
+  }, [currentImage, setSeedPoints, setAvoidancePoints]);
 
   const performMagicWand = useCallback(
     (
       targetCanvas: HTMLCanvasElement,
-      startX: number,
-      startY: number,
-      settings: MagicWandSettings
+      points: SeedPoint[],
+      settings: MagicWandSettings,
+      avoid: AvoidancePoint[]
     ) => {
       const image = imageRef.current;
-      if (!image || !image.complete || image.naturalWidth === 0) return;
-
-      const ctx = targetCanvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+      if (!image || !image.complete || image.naturalWidth === 0 || points.length === 0) {
+          clearCanvas(targetCanvas);
+          return;
+      };
 
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       if (!tempCtx) return;
-      
-      const { naturalWidth, naturalHeight } = image;
-      const { width, height } = targetCanvas; // Use canvas size which matches image render size
 
+      const { naturalWidth, naturalHeight } = image;
       tempCanvas.width = naturalWidth;
       tempCanvas.height = naturalHeight;
       
+      const targetCtx = targetCanvas.getContext('2d');
+      if (!targetCtx) return;
 
       try {
         tempCtx.drawImage(image, 0, 0, naturalWidth, naturalHeight);
-        const originalImageData = tempCtx.getImageData(0, 0, naturalWidth, naturalHeight);
-        
-        // Use a new image data for the mask, matching the render size
-        const maskImageData = ctx.createImageData(width, height);
+        const originalImageData = tempCtx.getImageData(
+          0,
+          0,
+          naturalWidth,
+          naturalHeight
+        );
 
         const { tolerance, contiguous, colorSpace } = settings;
         const imageData = originalImageData.data;
+        const maskImageData = targetCtx.createImageData(targetCanvas.width, targetCanvas.height);
         const maskData = maskImageData.data;
         const visited = new Uint8Array(naturalWidth * naturalHeight);
+        
+        const convertColor = (r: number, g: number, b: number) => {
+            switch(colorSpace) {
+                case 'hsv': return colorConverters.rgbToHsv(r, g, b);
+                case 'lab': return colorConverters.rgbToLab(r, g, b);
+                case 'rgb':
+                default:
+                    return [r, g, b];
+            }
+        };
 
-        const getDistance = (c1: number[], c2: number[]) => {
-            if (colorSpace === 'hsv') {
-                const dh = Math.min(Math.abs(c1[0] - c2[0]), 360 - Math.abs(c1[0] - c2[0]));
+        const getDistance = (c1: number[], c2: number[], space: string) => {
+            if (space === 'hsv') {
+                const dh = Math.min(Math.abs(c1[0] - c2[0]), 360 - Math.abs(c1[0] - c2[0])) / 180.0 * 100;
                 const ds = Math.abs(c1[1] - c2[1]);
                 const dv = Math.abs(c1[2] - c2[2]);
-                // A weighted distance, hue is perceptually more significant
-                return Math.sqrt(dh * dh * 2 + ds * ds + dv * dv);
+                return Math.sqrt(dh*dh + ds*ds + dv*dv);
             }
-             // For LAB and RGB, Euclidean distance works well
             return Math.sqrt(
                 Math.pow(c1[0] - c2[0], 2) +
                 Math.pow(c1[1] - c2[1], 2) +
@@ -109,67 +137,74 @@ export function CanvasArea({
             );
         };
         
-        const convertColor = (r: number, g: number, b: number) => {
-            switch(colorSpace) {
-                case 'hsv': return colorConverters.rgbToHsv(r, g, b);
-                case 'lab': return colorConverters.rgbToLab(r, g, b);
-                case 'quaternion': // Placeholder
-                    return [r,g,b];
-                case 'rgb':
-                default:
-                    return [r, g, b];
-            }
-        };
+        const queue: [number, number][] = [];
+        const startColors: number[][] = [];
 
-        const startIdx = (startY * naturalWidth + startX) * 4;
-        const startR = imageData[startIdx];
-        const startG = imageData[startIdx + 1];
-        const startB = imageData[startIdx + 2];
-        const startColor = convertColor(startR, startG, startB);
+        points.forEach(point => {
+          const { x: startX, y: startY } = point;
+          const startIdx = (startY * naturalWidth + startX) * 4;
+          const r = imageData[startIdx];
+          const g = imageData[startIdx + 1];
+          const b = imageData[startIdx + 2];
+          startColors.push(convertColor(r, g, b));
 
-        const queue: [number, number][] = [[startX, startY]];
-        
-        if (visited[startY * naturalWidth + startX]) return;
-        visited[startY * naturalWidth + startX] = 1;
+          if (visited[startY * naturalWidth + startX] === 0) {
+              queue.push([startX, startY]);
+              visited[startY * naturalWidth + startX] = 1;
+          }
+        });
 
         let head = 0;
         while (head < queue.length) {
             const [x, y] = queue[head++]!;
              
-            // Scale natural coords to render coords for drawing on mask
-            const renderX = Math.floor(x * (width / naturalWidth));
-            const renderY = Math.floor(y * (height / naturalHeight));
-            const maskDataIndex = (renderY * width + renderX) * 4;
+            const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+            const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+            const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
 
             maskData[maskDataIndex] = 50;
             maskData[maskDataIndex + 1] = 150;
             maskData[maskDataIndex + 2] = 255;
             maskData[maskDataIndex + 3] = 128;
 
-            const neighbors = [
-                [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]
-            ];
+            const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
 
             for (const [nx, ny] of neighbors) {
                 if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
                     const neighborIndex = ny * naturalWidth + nx;
-                    if (visited[neighborIndex]) {
-                        continue;
-                    }
+                    if (visited[neighborIndex]) continue;
                     
                     const dataIndex = neighborIndex * 4;
                     const r = imageData[dataIndex];
                     const g = imageData[dataIndex + 1];
                     const b = imageData[dataIndex + 2];
-
                     const neighborColor = convertColor(r, g, b);
-                    const distance = getDistance(startColor, neighborColor);
 
-                    if (distance <= tolerance) {
-                        visited[neighborIndex] = 1;
-                        if (contiguous) {
-                          queue.push([nx, ny]);
+                    // Check against avoidance points
+                    let isAvoided = false;
+                    for (const avoidPoint of avoid) {
+                        const dist = getDistance(neighborColor, avoidPoint.color, settings.colorSpace);
+                        if (dist <= avoidPoint.tolerance) {
+                            isAvoided = true;
+                            break;
                         }
+                    }
+                    if (isAvoided) continue;
+
+                    let isSimilar = false;
+                    for (const startColor of startColors) {
+                      const distance = getDistance(startColor, neighborColor, colorSpace);
+                      if (distance <= tolerance) {
+                          isSimilar = true;
+                          break;
+                      }
+                    }
+
+                    if (isSimilar) {
+                      visited[neighborIndex] = 1;
+                      if (contiguous) {
+                        queue.push([nx, ny]);
+                      }
                     }
                 }
             }
@@ -179,9 +214,18 @@ export function CanvasArea({
                   const r = imageData[i*4];
                   const g = imageData[i*4+1];
                   const b = imageData[i*4+2];
-                  const neighborColor = convertColor(r, g, b);
-                  const distance = getDistance(startColor, neighborColor);
-                  if (distance <= tolerance) {
+                  const pixelColor = convertColor(r, g, b);
+                  
+                  let isSimilar = false;
+                  for (const startColor of startColors) {
+                    const distance = getDistance(startColor, pixelColor, colorSpace);
+                    if (distance <= tolerance) {
+                        isSimilar = true;
+                        break;
+                    }
+                  }
+
+                  if (isSimilar) {
                     visited[i] = 1;
                     const x = i % naturalWidth;
                     const y = Math.floor(i/naturalWidth);
@@ -193,7 +237,7 @@ export function CanvasArea({
         }
         
         clearCanvas(targetCanvas);
-        ctx.putImageData(maskImageData, 0, 0);
+        targetCtx.putImageData(maskImageData, 0, 0);
 
       } catch (e: any) {
         if (e.message.includes('cross-origin')) {
@@ -215,50 +259,56 @@ export function CanvasArea({
     [toast]
   );
   
-  const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
+  const getScaledCoords = (event: MouseEvent<HTMLDivElement>): SeedPoint | null => {
     const image = imageRef.current;
     const container = event.currentTarget;
     if (!image || !container || !image.complete || image.naturalWidth === 0) return null;
     
     const containerRect = container.getBoundingClientRect();
     const { naturalWidth, naturalHeight } = image;
-    
-    const containerAspect = containerRect.width / containerRect.height;
     const imageAspect = naturalWidth / naturalHeight;
+    
+    const { width: containerWidth, height: containerHeight } = containerRect;
+    const containerAspect = containerWidth / containerHeight;
 
     let renderedWidth, renderedHeight, offsetX, offsetY;
 
-    if (containerAspect > imageAspect) { // Container is wider than the image
-      renderedHeight = containerRect.height;
+    if (containerAspect > imageAspect) {
+      renderedHeight = containerHeight;
       renderedWidth = renderedHeight * imageAspect;
       offsetY = 0;
-      offsetX = (containerRect.width - renderedWidth) / 2;
-    } else { // Container is taller than or same aspect as the image
-      renderedWidth = containerRect.width;
+      offsetX = (containerWidth - renderedWidth) / 2;
+    } else { 
+      renderedWidth = containerWidth;
       renderedHeight = renderedWidth / imageAspect;
       offsetX = 0;
-      offsetY = (containerRect.height - renderedHeight) / 2;
+      offsetY = (containerHeight - renderedHeight) / 2;
     }
 
     const clientX = event.clientX - containerRect.left - offsetX;
     const clientY = event.clientY - containerRect.top - offsetY;
 
     if (clientX < 0 || clientX >= renderedWidth || clientY < 0 || clientY >= renderedHeight) {
-        return null; // Mouse is outside the actual image
+        return null;
     }
 
-    // Scale client coords to natural image coords
     const naturalX = Math.floor(clientX * (naturalWidth / renderedWidth));
     const naturalY = Math.floor(clientY * (naturalHeight / renderedHeight));
     
     return { x: naturalX, y: naturalY };
   }
 
-  // Rerun wand selection when settings change
   useEffect(() => {
     if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) return;
-    performMagicWand(previewCanvasRef.current, lastMousePosition.x, lastMousePosition.y, wandSettings);
-  }, [wandSettings, activeTool, lastMousePosition, performMagicWand]);
+
+    const pointsToUse = seedPoints.length > 0 ? [...seedPoints, lastMousePosition] : [lastMousePosition];
+    performMagicWand(
+      previewCanvasRef.current,
+      pointsToUse,
+      wandSettings,
+      avoidancePoints
+    );
+  }, [wandSettings, activeTool, lastMousePosition, performMagicWand, seedPoints, avoidancePoints]);
 
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
@@ -280,12 +330,40 @@ export function CanvasArea({
     const coords = getScaledCoords(event);
     if (!coords) return;
     
-    performMagicWand(selectionCanvasRef.current!, coords.x, coords.y, wandSettings);
+    if (event.ctrlKey) {
+      // Add to avoidance points
+      const image = imageRef.current;
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+      if (!image || !tempCtx) return;
+      tempCanvas.width = image.naturalWidth;
+      tempCanvas.height = image.naturalHeight;
+      tempCtx.drawImage(image, 0, 0);
+      const pixel = tempCtx.getImageData(coords.x, coords.y, 1, 1).data;
+      const color = colorConverters.rgbToHsv(pixel[0], pixel[1], pixel[2]);
+
+      setAvoidancePoints(prev => [...prev, { ...coords, color, tolerance: wandSettings.tolerance }]);
+      toast({ title: 'Avoidance point added.' });
+      return;
+    }
+
+    if (event.shiftKey) {
+      // Add to seed points
+      setSeedPoints(prev => [...prev, coords]);
+      toast({ title: 'Seed point added.' });
+    } else {
+      // Regular click, clear previous seeds
+      setSeedPoints([]);
+    }
+
+    const pointsToUse = event.shiftKey ? [...seedPoints, coords] : [coords];
+    
+    performMagicWand(selectionCanvasRef.current!, pointsToUse, wandSettings, avoidancePoints);
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand') return;
-    event.preventDefault(); // Prevent page scrolling
+    event.preventDefault(); 
 
     const change = event.deltaY < 0 ? 1 : -1;
     setWandSettings(prevSettings => {
@@ -304,16 +382,17 @@ export function CanvasArea({
     if (image && container && selectionCanvas && previewCanvas && image.complete && image.naturalWidth > 0) {
       const { naturalWidth, naturalHeight } = image;
       const containerRect = container.getBoundingClientRect();
-      const containerAspect = containerRect.width / containerRect.height;
+      const { width: containerWidth, height: containerHeight } = containerRect;
+      const containerAspect = containerWidth / containerHeight;
       const imageAspect = naturalWidth / naturalHeight;
 
       let renderedWidth, renderedHeight;
 
       if (containerAspect > imageAspect) {
-        renderedHeight = containerRect.height;
+        renderedHeight = containerHeight;
         renderedWidth = renderedHeight * imageAspect;
       } else {
-        renderedWidth = containerRect.width;
+        renderedWidth = containerWidth;
         renderedHeight = renderedWidth / imageAspect;
       }
 
@@ -322,34 +401,25 @@ export function CanvasArea({
       previewCanvas.width = renderedWidth;
       previewCanvas.height = renderedHeight;
 
-      // When the image loads or changes, ensure we re-run any existing preview
        if (lastMousePosition) {
-           performMagicWand(previewCanvas, lastMousePosition.x, lastMousePosition.y, wandSettings);
+           performMagicWand(previewCanvas, [lastMousePosition], wandSettings, avoidancePoints);
        }
     }
-  }, [lastMousePosition, wandSettings, performMagicWand]);
+  }, [lastMousePosition, wandSettings, performMagicWand, avoidancePoints]);
 
 
   useEffect(() => {
     const imageEl = imageRef.current;
     if (!imageEl) return;
     
-    // Add event listener for resize to adjust canvas
-    const resizeObserver = new ResizeObserver(() => {
-        setCanvasSize();
-    });
+    const resizeObserver = new ResizeObserver(() => setCanvasSize());
     if (imageEl.parentElement) {
       resizeObserver.observe(imageEl.parentElement);
     }
     
-    // Initial size set
-    if (imageEl.complete) {
-      setCanvasSize();
-    }
+    if (imageEl.complete) setCanvasSize();
     
-    return () => {
-        resizeObserver.disconnect();
-    }
+    return () => resizeObserver.disconnect();
   }, [setCanvasSize]);
 
   return (
@@ -358,7 +428,7 @@ export function CanvasArea({
         <div className="space-y-1.5">
           <CardTitle className="font-headline">Canvas</CardTitle>
           <CardDescription>
-            Select an image and use the tools to create segments.
+            Use tools to create segments. Ctrl+Click to avoid, Shift+Click to add points.
           </CardDescription>
         </div>
         <DropdownMenu>
