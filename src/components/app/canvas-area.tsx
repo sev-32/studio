@@ -50,7 +50,7 @@ export function CanvasArea({
   }, [currentImage]);
 
   const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeTool !== 'wand' || !canvasRef.current) {
+    if (activeTool !== 'wand' || !canvasRef.current || !imageRef.current) {
       return;
     }
 
@@ -102,6 +102,8 @@ export function CanvasArea({
   
       const index = (y * width + x);
       if (visited[index]) continue;
+      
+      visited[index] = 1; // Mark as visited
   
       const dataIndex = index * 4;
       const r = data[dataIndex];
@@ -112,7 +114,6 @@ export function CanvasArea({
   
       if (distance <= tolerance) {
         data[dataIndex + 3] = 255; // Set alpha to full for selected pixels
-        visited[index] = 1;
   
         stack.push([x + 1, y]);
         stack.push([x - 1, y]);
