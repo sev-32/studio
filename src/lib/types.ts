@@ -28,6 +28,7 @@ export interface Preset {
 export interface SeedPoint {
   x: number;
   y: number;
+  tolerance: number;
 }
 
 export interface AvoidancePoint {
@@ -44,3 +45,5 @@ export interface Layer {
     imageData: ImageData;
     visible: boolean;
 }
+
+    

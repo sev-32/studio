@@ -39,6 +39,9 @@ interface CanvasAreaProps {
   setSeedPoints: Dispatch<SetStateAction<SeedPoint[]>>;
   avoidancePoints: AvoidancePoint[];
   setAvoidancePoints: Dispatch<SetStateAction<AvoidancePoint[]>>;
+  layers: Layer[];
+  onCopyToLayer: (imageData: ImageData) => void;
+  onClearPoints: () => void;
 }
 
 type LastPoint = { type: 'seed'; index: number } | { type: 'avoid'; index: number } | null;
@@ -58,7 +61,7 @@ export function CanvasArea({
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
-  const [lastMousePosition, setLastMousePosition] = useState<SeedPoint | null>(null);
+  const [lastMousePosition, setLastMousePosition] = useState<{x: number, y: number} | null>(null);
   const [lastClickedPoint, setLastClickedPoint] = useState<LastPoint>(null);
 
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
@@ -163,14 +166,9 @@ export function CanvasArea({
           const g = imageData[startIdx + 1];
           const b = imageData[startIdx + 2];
           
-          let tolerance = settings.tolerance;
-          if (lastClickedPoint && lastClickedPoint.type === 'seed' && points.length > lastClickedPoint.index){
-            // Special handling for multi-point tolerance will go here in the future
-          }
-
           startColors.push({
             color: convertColor(r,g,b), 
-            tolerance: tolerance
+            tolerance: point.tolerance
           });
 
 
@@ -286,10 +284,10 @@ export function CanvasArea({
         }
       }
     },
-    [toast, lastClickedPoint]
+    [toast]
   );
   
-  const getScaledCoords = (event: MouseEvent<HTMLDivElement>): SeedPoint | null => {
+  const getScaledCoords = (event: MouseEvent<HTMLDivElement>): {x: number, y: number} | null => {
     const image = imageRef.current;
     const container = event.currentTarget;
     if (!image || !container || !image.complete || image.naturalWidth === 0) return null;
@@ -331,8 +329,7 @@ export function CanvasArea({
   const runPreview = useCallback(() => {
     if (activeTool !== 'wand' || !previewCanvasRef.current) return;
     
-    // Always show avoidance areas
-    const pointsToUse = seedPoints.length > 0 ? seedPoints : (lastMousePosition ? [lastMousePosition] : []);
+    const pointsToUse = seedPoints.length > 0 ? seedPoints : (lastMousePosition ? [{...lastMousePosition, tolerance: wandSettings.tolerance}] : []);
     const previewingAvoid = pointsToUse.length === 0 && avoidancePoints.length > 0;
     
     performMagicWand(
@@ -394,7 +391,7 @@ export function CanvasArea({
       toast({ title: 'Avoidance point added.' });
     } else if (event.shiftKey) {
       setSeedPoints(prev => {
-        const newPoints = [...prev, coords];
+        const newPoints = [...prev, { ...coords, tolerance: wandSettings.tolerance }];
         setLastClickedPoint({ type: 'seed', index: newPoints.length - 1 });
         return newPoints;
       });
@@ -403,7 +400,7 @@ export function CanvasArea({
       clearCanvas(selectionCanvasRef.current);
       setAvoidancePoints([]);
       setSeedPoints(() => {
-          const newPoints = [coords];
+          const newPoints = [{ ...coords, tolerance: wandSettings.tolerance }];
           setLastClickedPoint({ type: 'seed', index: 0 });
           return newPoints;
       });
@@ -422,10 +419,13 @@ export function CanvasArea({
     
     if (lastClickedPoint) {
        if (lastClickedPoint.type === 'seed') {
-           // We adjust the global wand tolerance since seeds share it
-           setWandSettings(prev => {
-                const newTolerance = Math.max(0, Math.min(255, prev.tolerance + change));
-                return { ...prev, tolerance: newTolerance };
+           setSeedPoints(prev => {
+               const newPoints = [...prev];
+               const pointToUpdate = newPoints[lastClickedPoint.index];
+               if (pointToUpdate) {
+                   pointToUpdate.tolerance = Math.max(0, Math.min(255, pointToUpdate.tolerance + change));
+               }
+               return newPoints;
            });
        } else if (lastClickedPoint.type === 'avoid') {
            setAvoidancePoints(prev => {
@@ -559,3 +559,5 @@ export function CanvasArea({
     </Card>
   );
 }
+
+    
