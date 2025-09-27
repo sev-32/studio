@@ -24,7 +24,11 @@ export function AppLayout() {
   const [currentImage, setCurrentImage] = useState(PlaceHolderImages[0]);
   const [autoDetectMode, setAutoDetectMode] = useState(true);
   const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
-    tolerance: 30,
+    tolerances: {
+      rgb: 30,
+      hsv: 30,
+      lab: 30,
+    },
     contiguous: true,
     colorSpaces: ['rgb'],
   });

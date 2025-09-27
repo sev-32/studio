@@ -173,7 +173,7 @@ export function CanvasArea({
           const previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
           previewGroup.points.push({
             ...lastMousePosition,
-            tolerance: settings.tolerance,
+            tolerances: settings.tolerances,
           });
           const groupIndex = allVisibleGroups.findIndex(
             (g) => g.id === activeGroupId
@@ -208,7 +208,8 @@ export function CanvasArea({
                       space
                     );
                     const dist = getDistance(pixelColor, pointColor, space);
-                    if (dist <= avoidPoint.tolerance) {
+                    const tolerance = (avoidPoint.tolerances as any)[space];
+                    if (dist <= tolerance) {
                       avoidanceMask[index] = 1;
                       isAvoided = true;
                       break;
@@ -235,7 +236,7 @@ export function CanvasArea({
             const queue: [number, number][] = [];
             const startColors: {
               colors: Record<string, number[]>;
-              tolerance: number;
+              tolerances: { rgb: number; hsv: number; lab: number };
             }[] = [];
 
             group.points.forEach((point) => {
@@ -257,7 +258,7 @@ export function CanvasArea({
 
               startColors.push({
                 colors: colorsBySpace,
-                tolerance: point.tolerance,
+                tolerances: point.tolerances,
               });
 
               const startIndex = startY * naturalWidth + startX;
@@ -281,21 +282,17 @@ export function CanvasArea({
               for (const startColor of startColors) {
                 const pointColorSpaces = Object.keys(startColor.colors);
 
-                const distances = pointColorSpaces.map((space) => {
+                for (const space of pointColorSpaces) {
                   const pixelColor = convertColor(r, g, b, space);
-                  return getDistance(
-                    startColor.colors[space],
-                    pixelColor,
-                    space
-                  );
-                });
+                  const distance = getDistance(startColor.colors[space], pixelColor, space);
+                  const tolerance = (startColor.tolerances as any)[space];
 
-                const minDistance = Math.min(...distances);
-
-                if (minDistance <= startColor.tolerance) {
-                  isSimilar = true;
-                  break;
+                  if (distance <= tolerance) {
+                    isSimilar = true;
+                    break;
+                  }
                 }
+                if (isSimilar) break;
               }
 
               if (isSimilar) {
@@ -617,7 +614,7 @@ export function CanvasArea({
       if (activeGroupIndex > -1) {
         const newPoint: Point = {
           ...coords,
-          tolerance: wandSettings.tolerance,
+          tolerances: wandSettings.tolerances,
         };
         if (pointType === 'avoid') {
           newPoint.color = color;
@@ -635,15 +632,14 @@ export function CanvasArea({
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (activeTool !== 'wand' || !lastMousePosition) return;
     event.preventDefault();
-
+  
     const change = event.deltaY < 0 ? 1 : -1;
-
-    // Alt + scroll to change hover radius
+  
     if (event.altKey) {
-        setHoverRadius(prev => Math.max(1, Math.min(100, prev + change)));
-        return;
+      setHoverRadius((prev) => Math.max(1, Math.min(100, prev + change)));
+      return;
     }
-
+  
     let pointFound = false;
     setSegmentGroups((prevGroups) => {
       const newGroups = prevGroups.map((group) => {
@@ -654,9 +650,17 @@ export function CanvasArea({
           );
           if (distance < hoverRadius) {
             pointFound = true;
+            const newTolerances = { ...p.tolerances };
+            wandSettings.colorSpaces.forEach((space) => {
+              const key = space as keyof typeof newTolerances;
+              newTolerances[key] = Math.max(
+                0,
+                Math.min(255, p.tolerances[key] + change)
+              );
+            });
             return {
               ...p,
-              tolerance: Math.max(0, Math.min(255, p.tolerance + change)),
+              tolerances: newTolerances,
             };
           }
           return p;
@@ -665,17 +669,25 @@ export function CanvasArea({
       });
       return newGroups;
     });
-
+  
     if (pointFound) return;
-
-    // If no point was hovered, adjust global tolerance
+  
+    // If no point was hovered, adjust global tolerance for active color spaces
     setWandSettings((prevSettings) => {
-      const newTolerance = Math.max(
-        0,
-        Math.min(255, prevSettings.tolerance + change)
-      );
-      if (newTolerance === prevSettings.tolerance) return prevSettings;
-      return { ...prevSettings, tolerance: newTolerance };
+      const newTolerances = { ...prevSettings.tolerances };
+      let changed = false;
+      prevSettings.colorSpaces.forEach(space => {
+        const key = space as keyof typeof newTolerances;
+        const newTolerance = Math.max(0, Math.min(255, newTolerances[key] + change));
+        if (newTolerances[key] !== newTolerance) {
+            newTolerances[key] = newTolerance;
+            changed = true;
+        }
+      });
+
+      if (!changed) return prevSettings;
+      
+      return { ...prevSettings, tolerances: newTolerances };
     });
   };
 

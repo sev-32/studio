@@ -1,7 +1,12 @@
 export type Tool = 'wand' | 'lasso' | 'layers';
 
 export interface MagicWandSettings {
-  tolerance: number;
+  tolerances: {
+    rgb: number;
+    hsv: number;
+-   lab: number;
++   lab: number;  
+  };
   contiguous: boolean;
   colorSpaces: string[];
 }
@@ -28,7 +33,11 @@ export interface Preset {
 export interface Point {
   x: number;
   y: number;
-  tolerance: number;
+  tolerances: {
+    rgb: number;
+    hsv: number;
+    lab: number;
+  };
   color?: number[];
   colorSpaces?: string[];
 }

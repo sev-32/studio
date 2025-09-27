@@ -210,51 +210,15 @@ function MagicWandSettingsComponent({
   setSettings: Dispatch<SetStateAction<MagicWandSettings>>;
   disabled: boolean;
 }) {
+  const isColorSpaceActive = (space: string) =>
+    settings.colorSpaces.includes(space);
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="font-headline">
         Magic Wand Settings
       </SidebarGroupLabel>
       <div className="space-y-6 p-2">
-        <div className="space-y-3">
-          <Label
-            htmlFor="tolerance"
-            className={disabled ? 'text-muted-foreground' : ''}
-          >
-            Tolerance
-          </Label>
-          <div className="flex items-center gap-4">
-            <Slider
-              id="tolerance"
-              value={[settings.tolerance]}
-              onValueChange={(value) =>
-                setSettings((s) => ({ ...s, tolerance: value[0] }))
-              }
-              max={255}
-              step={1}
-              disabled={disabled}
-            />
-            <span className="w-12 text-right text-sm text-muted-foreground">
-              {settings.tolerance}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <Label
-            htmlFor="contiguous"
-            className={disabled ? 'text-muted-foreground' : ''}
-          >
-            Contiguous
-          </Label>
-          <Switch
-            id="contiguous"
-            checked={settings.contiguous}
-            onCheckedChange={(checked) =>
-              setSettings((s) => ({ ...s, contiguous: checked }))
-            }
-            disabled={disabled}
-          />
-        </div>
         <div className="space-y-3">
           <Label className={disabled ? 'text-muted-foreground' : ''}>
             Color Space
@@ -281,6 +245,116 @@ function MagicWandSettingsComponent({
               LAB
             </ToggleGroupItem>
           </ToggleGroup>
+        </div>
+
+        <div className="space-y-3">
+          <Label
+            htmlFor="tolerance-rgb"
+            className={
+              disabled || !isColorSpaceActive('rgb')
+                ? 'text-muted-foreground'
+                : ''
+            }
+          >
+            RGB Tolerance
+          </Label>
+          <div className="flex items-center gap-4">
+            <Slider
+              id="tolerance-rgb"
+              value={[settings.tolerances.rgb]}
+              onValueChange={(value) =>
+                setSettings((s) => ({
+                  ...s,
+                  tolerances: { ...s.tolerances, rgb: value[0] },
+                }))
+              }
+              max={255}
+              step={1}
+              disabled={disabled || !isColorSpaceActive('rgb')}
+            />
+            <span className="w-12 text-right text-sm text-muted-foreground">
+              {settings.tolerances.rgb}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Label
+            htmlFor="tolerance-hsv"
+            className={
+              disabled || !isColorSpaceActive('hsv')
+                ? 'text-muted-foreground'
+                : ''
+            }
+          >
+            HSV Tolerance
+          </Label>
+          <div className="flex items-center gap-4">
+            <Slider
+              id="tolerance-hsv"
+              value={[settings.tolerances.hsv]}
+              onValueChange={(value) =>
+                setSettings((s) => ({
+                  ...s,
+                  tolerances: { ...s.tolerances, hsv: value[0] },
+                }))
+              }
+              max={255}
+              step={1}
+              disabled={disabled || !isColorSpaceActive('hsv')}
+            />
+            <span className="w-12 text-right text-sm text-muted-foreground">
+              {settings.tolerances.hsv}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Label
+            htmlFor="tolerance-lab"
+            className={
+              disabled || !isColorSpaceActive('lab')
+                ? 'text-muted-foreground'
+                : ''
+            }
+          >
+            LAB Tolerance
+          </Label>
+          <div className="flex items-center gap-4">
+            <Slider
+              id="tolerance-lab"
+              value={[settings.tolerances.lab]}
+              onValueChange={(value) =>
+                setSettings((s) => ({
+                  ...s,
+                  tolerances: { ...s.tolerances, lab: value[0] },
+                }))
+              }
+              max={255}
+              step={1}
+              disabled={disabled || !isColorSpaceActive('lab')}
+            />
+            <span className="w-12 text-right text-sm text-muted-foreground">
+              {settings.tolerances.lab}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Label
+            htmlFor="contiguous"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Contiguous
+          </Label>
+          <Switch
+            id="contiguous"
+            checked={settings.contiguous}
+            onCheckedChange={(checked) =>
+              setSettings((s) => ({ ...s, contiguous: checked }))
+            }
+            disabled={disabled}
+          />
         </div>
       </div>
     </SidebarGroup>
