@@ -18,7 +18,7 @@ import { ChevronDown, Image as ImageIcon } from 'lucide-react';
 import type { ImagePlaceholder } from '@/lib/placeholder-images';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import type { Dispatch, SetStateAction, MouseEvent, WheelEvent } from 'react';
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState }from 'react';
 import type {
   MagicWandSettings,
   Tool,
@@ -41,6 +41,8 @@ interface CanvasAreaProps {
   setAvoidancePoints: Dispatch<SetStateAction<AvoidancePoint[]>>;
 }
 
+type LastPoint = { type: 'seed'; index: number } | { type: 'avoid'; index: number } | null;
+
 export function CanvasArea({
   currentImage,
   setCurrentImage,
@@ -56,9 +58,8 @@ export function CanvasArea({
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
-  const [lastMousePosition, setLastMousePosition] = useState<SeedPoint | null>(
-    null
-  );
+  const [lastMousePosition, setLastMousePosition] = useState<SeedPoint | null>(null);
+  const [lastClickedPoint, setLastClickedPoint] = useState<LastPoint>(null);
 
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
@@ -72,6 +73,7 @@ export function CanvasArea({
     clearCanvas(previewCanvasRef.current);
     setSeedPoints([]);
     setAvoidancePoints([]);
+    setLastClickedPoint(null);
   }, [currentImage, setSeedPoints, setAvoidancePoints]);
 
   const performMagicWand = useCallback(
@@ -79,13 +81,19 @@ export function CanvasArea({
       targetCanvas: HTMLCanvasElement,
       points: SeedPoint[],
       settings: MagicWandSettings,
-      avoid: AvoidancePoint[]
+      avoid: AvoidancePoint[],
+      previewingAvoid?: boolean
     ) => {
       const image = imageRef.current;
-      if (!image || !image.complete || image.naturalWidth === 0 || points.length === 0) {
+      if (!image || !image.complete || image.naturalWidth === 0) {
           clearCanvas(targetCanvas);
           return;
       };
+
+      if (points.length === 0 && !previewingAvoid) {
+        clearCanvas(targetCanvas);
+        return;
+      }
 
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
@@ -130,6 +138,14 @@ export function CanvasArea({
                 const dv = Math.abs(c1[2] - c2[2]);
                 return Math.sqrt(dh*dh + ds*ds + dv*dv);
             }
+             if (space === 'lab') {
+                return Math.sqrt(
+                    Math.pow(c1[0] - c2[0], 2) +
+                    Math.pow(c1[1] - c2[1], 2) +
+                    Math.pow(c1[2] - c2[2], 2)
+                );
+            }
+            // RGB
             return Math.sqrt(
                 Math.pow(c1[0] - c2[0], 2) +
                 Math.pow(c1[1] - c2[1], 2) +
@@ -153,89 +169,93 @@ export function CanvasArea({
               visited[startY * naturalWidth + startX] = 1;
           }
         });
+        
+        const processPixel = (x: number, y: number) => {
+            const index = y * naturalWidth + x;
+            if (visited[index]) return;
 
-        let head = 0;
-        while (head < queue.length) {
-            const [x, y] = queue[head++]!;
-             
-            const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
-            const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
-            const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+            const dataIndex = index * 4;
+            const r = imageData[dataIndex];
+            const g = imageData[dataIndex + 1];
+            const b = imageData[dataIndex + 2];
+            const pixelColor = convertColor(r, g, b);
 
-            maskData[maskDataIndex] = 50;
-            maskData[maskDataIndex + 1] = 150;
-            maskData[maskDataIndex + 2] = 255;
-            maskData[maskDataIndex + 3] = 128;
-
-            const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
-
-            for (const [nx, ny] of neighbors) {
-                if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
-                    const neighborIndex = ny * naturalWidth + nx;
-                    if (visited[neighborIndex]) continue;
-                    
-                    const dataIndex = neighborIndex * 4;
-                    const r = imageData[dataIndex];
-                    const g = imageData[dataIndex + 1];
-                    const b = imageData[dataIndex + 2];
-                    const neighborColor = convertColor(r, g, b);
-
-                    // Check against avoidance points
-                    let isAvoided = false;
-                    for (const avoidPoint of avoid) {
-                        const dist = getDistance(neighborColor, avoidPoint.color, settings.colorSpace);
-                        if (dist <= avoidPoint.tolerance) {
-                            isAvoided = true;
-                            break;
-                        }
+            let isAvoided = false;
+            for (const avoidPoint of avoid) {
+                const dist = getDistance(pixelColor, avoidPoint.color, avoidPoint.colorSpace);
+                if (dist <= avoidPoint.tolerance) {
+                    isAvoided = true;
+                    if (previewingAvoid) {
+                       const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                       const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                       const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+                       maskData[maskDataIndex] = 255;
+                       maskData[maskDataIndex + 1] = 0;
+                       maskData[maskDataIndex + 2] = 0;
+                       maskData[maskDataIndex + 3] = 128;
                     }
-                    if (isAvoided) continue;
+                    break;
+                }
+            }
+            if (isAvoided) return;
+             if (previewingAvoid) return;
 
-                    let isSimilar = false;
-                    for (const startColor of startColors) {
-                      const distance = getDistance(startColor, neighborColor, colorSpace);
-                      if (distance <= tolerance) {
-                          isSimilar = true;
-                          break;
-                      }
-                    }
 
-                    if (isSimilar) {
-                      visited[neighborIndex] = 1;
-                      if (contiguous) {
-                        queue.push([nx, ny]);
-                      }
+            let isSimilar = false;
+            for (const startColor of startColors) {
+                const distance = getDistance(startColor, pixelColor, colorSpace);
+                if (distance <= tolerance) {
+                    isSimilar = true;
+                    break;
+                }
+            }
+
+            if (isSimilar) {
+                visited[index] = 1;
+                if (contiguous) {
+                    queue.push([x, y]);
+                }
+                const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+
+                maskData[maskDataIndex] = 50;
+                maskData[maskDataIndex + 1] = 150;
+                maskData[maskDataIndex + 2] = 255;
+                maskData[maskDataIndex + 3] = 128;
+            }
+        };
+
+        if (contiguous) {
+            let head = 0;
+            while (head < queue.length) {
+                const [x, y] = queue[head++]!;
+                
+                 const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                 const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                 const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+
+                 maskData[maskDataIndex] = 50;
+                 maskData[maskDataIndex + 1] = 150;
+                 maskData[maskDataIndex + 2] = 255;
+                 maskData[maskDataIndex + 3] = 128;
+
+                const neighbors = [ [x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y] ];
+
+                for (const [nx, ny] of neighbors) {
+                    if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
+                         processPixel(nx, ny);
                     }
                 }
             }
-            if (!contiguous) {
-              for(let i=0; i<naturalWidth*naturalHeight; i++){
-                if (!visited[i]) {
-                  const r = imageData[i*4];
-                  const g = imageData[i*4+1];
-                  const b = imageData[i*4+2];
-                  const pixelColor = convertColor(r, g, b);
-                  
-                  let isSimilar = false;
-                  for (const startColor of startColors) {
-                    const distance = getDistance(startColor, pixelColor, colorSpace);
-                    if (distance <= tolerance) {
-                        isSimilar = true;
-                        break;
-                    }
-                  }
-
-                  if (isSimilar) {
-                    visited[i] = 1;
-                    const x = i % naturalWidth;
-                    const y = Math.floor(i/naturalWidth);
-                    queue.push([x,y])
-                  }
+        } else {
+            for(let y=0; y < naturalHeight; y++) {
+                for (let x=0; x < naturalWidth; x++) {
+                    processPixel(x, y);
                 }
-              }
             }
         }
-        
+
         clearCanvas(targetCanvas);
         targetCtx.putImageData(maskImageData, 0, 0);
 
@@ -273,16 +293,16 @@ export function CanvasArea({
 
     let renderedWidth, renderedHeight, offsetX, offsetY;
 
-    if (containerAspect > imageAspect) {
-      renderedHeight = containerHeight;
-      renderedWidth = renderedHeight * imageAspect;
-      offsetY = 0;
-      offsetX = (containerWidth - renderedWidth) / 2;
-    } else { 
+    if (imageAspect > containerAspect) {
       renderedWidth = containerWidth;
       renderedHeight = renderedWidth / imageAspect;
       offsetX = 0;
       offsetY = (containerHeight - renderedHeight) / 2;
+    } else { 
+      renderedHeight = containerHeight;
+      renderedWidth = renderedHeight * imageAspect;
+      offsetY = 0;
+      offsetX = (containerWidth - renderedWidth) / 2;
     }
 
     const clientX = event.clientX - containerRect.left - offsetX;
@@ -298,17 +318,26 @@ export function CanvasArea({
     return { x: naturalX, y: naturalY };
   }
 
-  useEffect(() => {
-    if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) return;
-
-    const pointsToUse = seedPoints.length > 0 ? [...seedPoints, lastMousePosition] : [lastMousePosition];
+  const runPreview = useCallback(() => {
+    if (activeTool !== 'wand' || !previewCanvasRef.current) return;
+    
+    // Always show avoidance areas
+    const pointsToUse = seedPoints.length > 0 ? seedPoints : (lastMousePosition ? [lastMousePosition] : []);
+    const previewingAvoid = pointsToUse.length === 0 && avoidancePoints.length > 0;
+    
     performMagicWand(
       previewCanvasRef.current,
       pointsToUse,
       wandSettings,
-      avoidancePoints
+      avoidancePoints,
+      previewingAvoid
     );
-  }, [wandSettings, activeTool, lastMousePosition, performMagicWand, seedPoints, avoidancePoints]);
+
+  }, [activeTool, wandSettings, avoidancePoints, seedPoints, lastMousePosition, performMagicWand]);
+
+  useEffect(() => {
+    runPreview();
+  }, [wandSettings, avoidancePoints, seedPoints, lastMousePosition, runPreview]);
 
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
@@ -325,40 +354,54 @@ export function CanvasArea({
   };
 
   const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (activeTool !== 'wand' || !selectionCanvasRef.current || !previewCanvasRef.current) return;
+    if (activeTool !== 'wand' || !previewCanvasRef.current) return;
     
     const coords = getScaledCoords(event);
     if (!coords) return;
     
+    const image = imageRef.current;
+    if (!image) return;
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    if (!tempCtx) return;
+    tempCanvas.width = image.naturalWidth;
+    tempCanvas.height = image.naturalHeight;
+    tempCtx.drawImage(image, 0, 0);
+    const pixel = tempCtx.getImageData(coords.x, coords.y, 1, 1).data;
+
     if (event.ctrlKey) {
-      // Add to avoidance points
-      const image = imageRef.current;
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-      if (!image || !tempCtx) return;
-      tempCanvas.width = image.naturalWidth;
-      tempCanvas.height = image.naturalHeight;
-      tempCtx.drawImage(image, 0, 0);
-      const pixel = tempCtx.getImageData(coords.x, coords.y, 1, 1).data;
-      const color = colorConverters.rgbToHsv(pixel[0], pixel[1], pixel[2]);
-
-      setAvoidancePoints(prev => [...prev, { ...coords, color, tolerance: wandSettings.tolerance }]);
+      const newAvoidancePoint: AvoidancePoint = {
+          ...coords,
+          color: colorConverters.rgbToHsv(pixel[0], pixel[1], pixel[2]),
+          colorSpace: wandSettings.colorSpace,
+          tolerance: wandSettings.tolerance,
+      };
+      setAvoidancePoints(prev => {
+        const newPoints = [...prev, newAvoidancePoint];
+        setLastClickedPoint({ type: 'avoid', index: newPoints.length - 1 });
+        return newPoints;
+      });
       toast({ title: 'Avoidance point added.' });
-      return;
-    }
-
-    if (event.shiftKey) {
-      // Add to seed points
-      setSeedPoints(prev => [...prev, coords]);
+    } else if (event.shiftKey) {
+      setSeedPoints(prev => {
+        const newPoints = [...prev, coords];
+        setLastClickedPoint({ type: 'seed', index: newPoints.length - 1 });
+        return newPoints;
+      });
       toast({ title: 'Seed point added.' });
     } else {
-      // Regular click, clear previous seeds
-      setSeedPoints([]);
+      clearCanvas(selectionCanvasRef.current);
+      setAvoidancePoints([]);
+      setSeedPoints(() => {
+          const newPoints = [coords];
+          setLastClickedPoint({ type: 'seed', index: 0 });
+          return newPoints;
+      });
     }
-
-    const pointsToUse = event.shiftKey ? [...seedPoints, coords] : [coords];
     
-    performMagicWand(selectionCanvasRef.current!, pointsToUse, wandSettings, avoidancePoints);
+    if (selectionCanvasRef.current) {
+         performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
+    }
   };
   
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -366,11 +409,31 @@ export function CanvasArea({
     event.preventDefault(); 
 
     const change = event.deltaY < 0 ? 1 : -1;
-    setWandSettings(prevSettings => {
-        const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
-        if (newTolerance === prevSettings.tolerance) return prevSettings;
-        return { ...prevSettings, tolerance: newTolerance };
-    });
+    
+    if (lastClickedPoint) {
+       if (lastClickedPoint.type === 'seed') {
+           // We adjust the global wand tolerance since seeds share it
+           setWandSettings(prev => {
+                const newTolerance = Math.max(0, Math.min(255, prev.tolerance + change));
+                return { ...prev, tolerance: newTolerance };
+           });
+       } else if (lastClickedPoint.type === 'avoid') {
+           setAvoidancePoints(prev => {
+               const newPoints = [...prev];
+               const pointToUpdate = newPoints[lastClickedPoint.index];
+               if (pointToUpdate) {
+                   pointToUpdate.tolerance = Math.max(0, Math.min(255, pointToUpdate.tolerance + change));
+               }
+               return newPoints;
+           });
+       }
+    } else {
+        setWandSettings(prevSettings => {
+            const newTolerance = Math.max(0, Math.min(255, prevSettings.tolerance + change));
+            if (newTolerance === prevSettings.tolerance) return prevSettings;
+            return { ...prevSettings, tolerance: newTolerance };
+        });
+    }
   };
 
   const setCanvasSize = useCallback(() => {
@@ -388,12 +451,12 @@ export function CanvasArea({
 
       let renderedWidth, renderedHeight;
 
-      if (containerAspect > imageAspect) {
-        renderedHeight = containerHeight;
-        renderedWidth = renderedHeight * imageAspect;
+      if (imageAspect > containerAspect) {
+          renderedWidth = containerWidth;
+          renderedHeight = renderedWidth / imageAspect;
       } else {
-        renderedWidth = containerWidth;
-        renderedHeight = renderedWidth / imageAspect;
+          renderedHeight = containerHeight;
+          renderedWidth = renderedHeight * imageAspect;
       }
 
       selectionCanvas.width = renderedWidth;
@@ -401,11 +464,12 @@ export function CanvasArea({
       previewCanvas.width = renderedWidth;
       previewCanvas.height = renderedHeight;
 
-       if (lastMousePosition) {
-           performMagicWand(previewCanvas, [lastMousePosition], wandSettings, avoidancePoints);
-       }
+      runPreview();
+      if(selectionCanvasRef.current && seedPoints.length > 0) {
+        performMagicWand(selectionCanvasRef.current, seedPoints, wandSettings, avoidancePoints);
+      }
     }
-  }, [lastMousePosition, wandSettings, performMagicWand, avoidancePoints]);
+  }, [runPreview, seedPoints, wandSettings, avoidancePoints, performMagicWand]);
 
 
   useEffect(() => {

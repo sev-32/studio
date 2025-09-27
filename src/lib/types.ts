@@ -35,6 +35,7 @@ export interface AvoidancePoint {
   y: number;
   color: number[];
   tolerance: number;
+  colorSpace: string;
 }
 
 export interface Layer {
