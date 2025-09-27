@@ -9,13 +9,24 @@ import { LeftSidebar } from './left-sidebar';
 import { RightSidebar } from './right-sidebar';
 import { CanvasArea } from './canvas-area';
 import { AnalyticsPanel } from './analytics-panel';
-import type { Tool } from '@/lib/types';
+import type { MagicLassoSettings, MagicWandSettings, Tool } from '@/lib/types';
 import { useState } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 export function AppLayout() {
   const [activeTool, setActiveTool] = useState<Tool>('wand');
   const [currentImage, setCurrentImage] = useState(PlaceHolderImages[0]);
+  const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
+    tolerance: 30,
+    contiguous: true,
+    colorSpace: 'rgb',
+    connectivity: '4',
+  });
+  const [lassoSettings, setLassoSettings] = useState<MagicLassoSettings>({
+    nodeDropTime: 200,
+    elasticity: 0.5,
+    costFunction: 'sobel',
+  });
 
   return (
     <SidebarProvider>
@@ -36,7 +47,13 @@ export function AppLayout() {
           </SidebarInset>
 
           <Sidebar side="right">
-            <RightSidebar activeTool={activeTool} currentImage={currentImage} />
+            <RightSidebar
+              activeTool={activeTool}
+              wandSettings={wandSettings}
+              setWandSettings={setWandSettings}
+              lassoSettings={lassoSettings}
+              setLassoSettings={setLassoSettings}
+            />
           </Sidebar>
         </div>
       </div>

@@ -16,26 +16,49 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { PresetGenerator } from './preset-generator';
-import type { Tool } from '@/lib/types';
-import type { ImagePlaceholder } from '@/lib/placeholder-images';
+import type { MagicLassoSettings, MagicWandSettings, Tool } from '@/lib/types';
+import type { Dispatch, SetStateAction } from 'react';
 
 interface RightSidebarProps {
   activeTool: Tool;
-  currentImage: ImagePlaceholder;
+  wandSettings: MagicWandSettings;
+  setWandSettings: Dispatch<SetStateAction<MagicWandSettings>>;
+  lassoSettings: MagicLassoSettings;
+  setLassoSettings: Dispatch<SetStateAction<MagicLassoSettings>>;
 }
 
-export function RightSidebar({ activeTool, currentImage }: RightSidebarProps) {
+export function RightSidebar({
+  activeTool,
+  wandSettings,
+  setWandSettings,
+  lassoSettings,
+  setLassoSettings,
+}: RightSidebarProps) {
   return (
     <SidebarContent>
-      {activeTool === 'wand' && <MagicWandSettings />}
-      {activeTool === 'lasso' && <MagicLassoSettings />}
-      <PresetGenerator currentImage={currentImage} />
+      {activeTool === 'wand' && (
+        <MagicWandSettings
+          settings={wandSettings}
+          setSettings={setWandSettings}
+        />
+      )}
+      {activeTool === 'lasso' && (
+        <MagicLassoSettings
+          settings={lassoSettings}
+          setSettings={setLassoSettings}
+        />
+      )}
     </SidebarContent>
   );
 }
 
-function MagicWandSettings() {
+function MagicWandSettings({
+  settings,
+  setSettings,
+}: {
+  settings: MagicWandSettings;
+  setSettings: Dispatch<SetStateAction<MagicWandSettings>>;
+}) {
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="font-headline">
@@ -45,19 +68,38 @@ function MagicWandSettings() {
         <div className="space-y-3">
           <Label htmlFor="tolerance">Tolerance</Label>
           <div className="flex items-center gap-4">
-            <Slider id="tolerance" defaultValue={[30]} max={100} step={1} />
+            <Slider
+              id="tolerance"
+              value={[settings.tolerance]}
+              onValueChange={(value) =>
+                setSettings((s) => ({ ...s, tolerance: value[0] }))
+              }
+              max={100}
+              step={1}
+            />
             <span className="w-12 text-right text-sm text-muted-foreground">
-              30
+              {settings.tolerance}
             </span>
           </div>
         </div>
         <div className="flex items-center justify-between">
           <Label htmlFor="contiguous">Contiguous</Label>
-          <Switch id="contiguous" defaultChecked />
+          <Switch
+            id="contiguous"
+            checked={settings.contiguous}
+            onCheckedChange={(checked) =>
+              setSettings((s) => ({ ...s, contiguous: checked }))
+            }
+          />
         </div>
         <div className="space-y-3">
           <Label htmlFor="color-space">Color Space</Label>
-          <Select defaultValue="rgb">
+          <Select
+            value={settings.colorSpace}
+            onValueChange={(value) =>
+              setSettings((s) => ({ ...s, colorSpace: value }))
+            }
+          >
             <SelectTrigger id="color-space">
               <SelectValue placeholder="Select color space" />
             </SelectTrigger>
@@ -71,7 +113,12 @@ function MagicWandSettings() {
         </div>
         <div className="space-y-3">
           <Label htmlFor="connectivity">Connectivity</Label>
-          <Select defaultValue="4">
+          <Select
+            value={settings.connectivity}
+            onValueChange={(value) =>
+              setSettings((s) => ({ ...s, connectivity: value }))
+            }
+          >
             <SelectTrigger id="connectivity">
               <SelectValue placeholder="Select connectivity" />
             </SelectTrigger>
@@ -86,7 +133,13 @@ function MagicWandSettings() {
   );
 }
 
-function MagicLassoSettings() {
+function MagicLassoSettings({
+  settings,
+  setSettings,
+}: {
+  settings: MagicLassoSettings;
+  setSettings: Dispatch<SetStateAction<MagicLassoSettings>>;
+}) {
   return (
     <SidebarGroup>
       <SidebarGroupLabel className="font-headline">
@@ -95,20 +148,43 @@ function MagicLassoSettings() {
       <div className="space-y-4 p-2">
         <div className="space-y-3">
           <Label htmlFor="node-drop-time">Node Drop Time (ms)</Label>
-          <Input id="node-drop-time" type="number" defaultValue={200} />
+          <Input
+            id="node-drop-time"
+            type="number"
+            value={settings.nodeDropTime}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                nodeDropTime: parseInt(e.target.value, 10),
+              }))
+            }
+          />
         </div>
         <div className="space-y-3">
           <Label htmlFor="elasticity">Elasticity</Label>
           <div className="flex items-center gap-4">
-            <Slider id="elasticity" defaultValue={[0.5]} max={1} step={0.1} />
+            <Slider
+              id="elasticity"
+              value={[settings.elasticity]}
+              onValueChange={(value) =>
+                setSettings((s) => ({ ...s, elasticity: value[0] }))
+              }
+              max={1}
+              step={0.1}
+            />
             <span className="w-12 text-right text-sm text-muted-foreground">
-              0.5
+              {settings.elasticity.toFixed(1)}
             </span>
           </div>
         </div>
         <div className="space-y-3">
           <Label htmlFor="cost-fn">Cost Function</Label>
-          <Select defaultValue="sobel">
+          <Select
+            value={settings.costFunction}
+            onValueChange={(value) =>
+              setSettings((s) => ({ ...s, costFunction: value }))
+            }
+          >
             <SelectTrigger id="cost-fn">
               <SelectValue placeholder="Select cost function" />
             </SelectTrigger>
