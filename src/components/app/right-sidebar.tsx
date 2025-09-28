@@ -30,6 +30,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Eye, EyeOff, Plus, Trash2, MinusCircle } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 import { AnalyticsPanel } from './analytics-panel';
+import { cn } from '@/lib/utils';
 
 interface RightSidebarProps {
   activeTool: Tool;
@@ -46,8 +47,10 @@ interface RightSidebarProps {
   setLayers: Dispatch<SetStateAction<Layer[]>>;
   onCopyToLayer: () => void;
   hoveredPixelData: any;
-  ignoreAvoid: boolean;
-  setIgnoreAvoid: Dispatch<SetStateAction<boolean>>;
+  preventOverlap: boolean;
+  setPreventOverlap: Dispatch<SetStateAction<boolean>>;
+  activeGroupId: string | null;
+  setActiveGroupId: Dispatch<SetStateAction<string | null>>;
 }
 
 export function RightSidebar({
@@ -65,8 +68,10 @@ export function RightSidebar({
   setLayers,
   onCopyToLayer,
   hoveredPixelData,
-  ignoreAvoid,
-  setIgnoreAvoid,
+  preventOverlap,
+  setPreventOverlap,
+  activeGroupId,
+  setActiveGroupId,
 }: RightSidebarProps) {
   return (
     <SidebarContent>
@@ -74,6 +79,8 @@ export function RightSidebar({
         segmentGroups={segmentGroups}
         setSegmentGroups={setSegmentGroups}
         addNewGroup={addNewGroup}
+        activeGroupId={activeGroupId}
+        setActiveGroupId={setActiveGroupId}
       />
       <SidebarSeparator />
       <AnalyticsPanel pixelData={hoveredPixelData} wandSettings={wandSettings} />
@@ -94,11 +101,11 @@ export function RightSidebar({
               />
             </div>
              <div className="flex items-center justify-between p-2">
-              <Label htmlFor="ignore-avoid-groups">Ignore Avoid Groups</Label>
+              <Label htmlFor="prevent-overlap">Prevent Overlap</Label>
               <Switch
-                id="ignore-avoid-groups"
-                checked={ignoreAvoid}
-                onCheckedChange={setIgnoreAvoid}
+                id="prevent-overlap"
+                checked={preventOverlap}
+                onCheckedChange={setPreventOverlap}
               />
             </div>
           </SidebarGroup>
@@ -128,11 +135,15 @@ function SegmentGroupList({
   groups,
   toggleVisibility,
   deleteGroup,
+  activeGroupId,
+  setActiveGroupId,
 }: {
   title: string;
   groups: SegmentGroup[];
   toggleVisibility: (id: string) => void;
   deleteGroup: (id: string) => void;
+  activeGroupId: string | null;
+  setActiveGroupId: (id: string | null) => void;
 }) {
   if (groups.length === 0) {
     return null;
@@ -146,7 +157,11 @@ function SegmentGroupList({
         {groups.map((group) => (
           <div
             key={group.id}
-            className="flex items-center justify-between p-2 rounded-md bg-secondary"
+            className={cn(
+              "flex items-center justify-between p-2 rounded-md bg-secondary cursor-pointer",
+              group.id === activeGroupId && "ring-2 ring-primary"
+            )}
+            onClick={() => setActiveGroupId(group.id === activeGroupId ? null : group.id)}
           >
             <div
               className="w-4 h-4 rounded-full mr-2"
@@ -157,7 +172,10 @@ function SegmentGroupList({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => toggleVisibility(group.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleVisibility(group.id);
+              }}
             >
               {group.visible ? (
                 <Eye className="h-4 w-4" />
@@ -169,7 +187,10 @@ function SegmentGroupList({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => deleteGroup(group.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteGroup(group.id);
+              }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -184,10 +205,14 @@ function LayersPanel({
   segmentGroups,
   setSegmentGroups,
   addNewGroup,
+  activeGroupId,
+  setActiveGroupId,
 }: {
   segmentGroups: SegmentGroup[];
   setSegmentGroups: Dispatch<SetStateAction<SegmentGroup[]>>;
   addNewGroup: (type: 'add' | 'avoid') => void;
+  activeGroupId: string | null;
+  setActiveGroupId: Dispatch<SetStateAction<string | null>>;
 }) {
   const toggleVisibility = (id: string) => {
     setSegmentGroups(
@@ -240,12 +265,16 @@ function LayersPanel({
                   groups={addGroups}
                   toggleVisibility={toggleVisibility}
                   deleteGroup={deleteGroup}
+                  activeGroupId={activeGroupId}
+                  setActiveGroupId={setActiveGroupId}
                 />
                 <SegmentGroupList
                   title="Avoid Groups"
                   groups={avoidGroups}
                   toggleVisibility={toggleVisibility}
                   deleteGroup={deleteGroup}
+                  activeGroupId={activeGroupId}
+                  setActiveGroupId={setActiveGroupId}
                 />
               </>
             )}

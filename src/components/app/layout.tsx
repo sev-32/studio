@@ -10,6 +10,7 @@ import type {
   Tool,
   SegmentGroup,
   Layer,
+  Point,
 } from '@/lib/types';
 import { useState, useCallback } from 'react';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -23,7 +24,7 @@ export function AppLayout() {
   const [activeTool, setActiveTool] = useState<Tool>('wand');
   const [currentImage, setCurrentImage] = useState(PlaceHolderImages[0]);
   const [autoDetectMode, setAutoDetectMode] = useState(true);
-  const [ignoreAvoid, setIgnoreAvoid] = useState(false);
+  const [preventOverlap, setPreventOverlap] = useState(true);
   const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
     tolerances: {
       rgb: 30,
@@ -65,7 +66,7 @@ export function AppLayout() {
     [layers.length]
   );
 
-  const addNewGroup = (type: 'add' | 'avoid') => {
+  const addNewGroup = (type: 'add' | 'avoid', point?: Point) => {
     const newGroup: SegmentGroup = {
       id: `group-${Date.now()}`,
       name: `${
@@ -73,7 +74,7 @@ export function AppLayout() {
       } ${segmentGroups.filter((g) => g.type === type).length + 1}`,
       type,
       color: type === 'add' ? generateRandomColor() : 'hsla(0, 100%, 50%, 0.5)',
-      points: [],
+      points: point ? [point] : [],
       visible: true,
     };
     setSegmentGroups((prev) => [...prev, newGroup]);
@@ -106,7 +107,7 @@ export function AppLayout() {
               onCopyToLayer={handleCopyToLayer}
               onClearPoints={handleClearPoints}
               onPixelHover={setHoveredPixelData}
-              ignoreAvoid={ignoreAvoid}
+              preventOverlap={preventOverlap}
             />
           </main>
         </SidebarProvider>
@@ -131,8 +132,10 @@ export function AppLayout() {
                 console.log('Copy to layer clicked');
               }}
               hoveredPixelData={hoveredPixelData}
-              ignoreAvoid={ignoreAvoid}
-              setIgnoreAvoid={setIgnoreAvoid}
+              preventOverlap={preventOverlap}
+              setPreventOverlap={setPreventOverlap}
+              activeGroupId={activeGroupId}
+              setActiveGroupId={setActiveGroupId}
             />
           </Sidebar>
         </SidebarProvider>
