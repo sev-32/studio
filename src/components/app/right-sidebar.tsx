@@ -72,7 +72,7 @@ export function RightSidebar({
         addNewGroup={addNewGroup}
       />
       <SidebarSeparator />
-      <AnalyticsPanel pixelData={hoveredPixelData} />
+      <AnalyticsPanel pixelData={hoveredPixelData} wandSettings={wandSettings} />
       <SidebarSeparator />
 
       {activeTool !== 'layers' && (

@@ -1,7 +1,14 @@
 'use client';
+import type { MagicWandSettings } from '@/lib/types';
 import { SidebarGroup, SidebarGroupLabel } from '../ui/sidebar';
 
-export function AnalyticsPanel({ pixelData }: { pixelData: any }) {
+export function AnalyticsPanel({
+  pixelData,
+  wandSettings,
+}: {
+  pixelData: any;
+  wandSettings: MagicWandSettings;
+}) {
   const gridSize = 9;
   const cellSize = 12;
 
@@ -24,6 +31,9 @@ export function AnalyticsPanel({ pixelData }: { pixelData: any }) {
 
     const { data, width, height } = pixelData.pixelGrid;
     const grid = [];
+    const centerX = Math.floor(width / 2);
+    const centerY = Math.floor(height / 2);
+    const sampleRadius = (wandSettings?.sampleSize || 1) / 2; // Use radius for distance check
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -31,34 +41,51 @@ export function AnalyticsPanel({ pixelData }: { pixelData: any }) {
         const r = data[index];
         const g = data[index + 1];
         const b = data[index + 2];
-        const isCenter =
-          x === Math.floor(width / 2) && y === Math.floor(height / 2);
+        const isCenter = x === centerX && y === centerY;
+
+        const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+        const isInSampleRadius = dist <= sampleRadius;
 
         grid.push(
           <div
             key={`${y}-${x}`}
-            className={`flex items-center justify-center ${
-              isCenter ? 'ring-2 ring-inset ring-white' : ''
-            }`}
+            className="relative flex items-center justify-center"
             style={{
               backgroundColor: `rgb(${r}, ${g}, ${b})`,
               width: `${cellSize}px`,
               height: `${cellSize}px`,
             }}
-          />
+          >
+            {isCenter && (
+              <div className="absolute inset-0 ring-2 ring-inset ring-white" />
+            )}
+            {isInSampleRadius && !isCenter && (
+                 <div className="absolute inset-0 bg-black bg-opacity-20" />
+            )}
+          </div>
         );
       }
     }
+    
+    const containerSize = gridSize * cellSize;
+
     return (
       <div
-        className="grid overflow-hidden rounded-md border"
+        className="relative grid overflow-hidden rounded-md border"
         style={{
           gridTemplateColumns: `repeat(${width}, 1fr)`,
-          width: `${width * cellSize}px`,
-          height: `${height * cellSize}px`,
+          width: `${containerSize}px`,
+          height: `${containerSize}px`,
         }}
       >
         {grid}
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none rounded-full border border-dashed border-white border-opacity-75"
+          style={{
+            width: `${(wandSettings?.sampleSize || 0) * cellSize}px`,
+            height: `${(wandSettings?.sampleSize || 0) * cellSize}px`,
+          }}
+        />
       </div>
     );
   };
