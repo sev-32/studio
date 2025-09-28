@@ -48,6 +48,137 @@ interface CanvasAreaProps {
   preventOverlap: boolean;
 }
 
+const convertColor = (r: number, g: number, b: number, space: string) => {
+  switch (space) {
+    case 'hsv':
+      return colorConverters.rgbToHsv(r, g, b);
+    case 'lab':
+      return colorConverters.rgbToLab(r, g, b);
+    case 'rgb':
+    default:
+      return [r, g, b];
+  }
+};
+
+const getDistance = (c1: number[], c2: number[], space: string) => {
+  if (space === 'hsv') {
+    const dh =
+      (Math.min(Math.abs(c1[0] - c2[0]), 360 - Math.abs(c1[0] - c2[0])) /
+        180.0) *
+      100;
+    const ds = Math.abs(c1[1] - c2[1]);
+    const dv = Math.abs(c1[2] - c2[2]);
+    return Math.sqrt(dh * dh + ds * ds + dv * dv);
+  }
+  if (space === 'lab') {
+    return Math.sqrt(
+      Math.pow(c1[0] - c2[0], 2) +
+        Math.pow(c1[1] - c2[1], 2) +
+        Math.pow(c1[2] - c2[2], 2)
+    );
+  }
+  return Math.sqrt(
+    Math.pow(c1[0] - c2[0], 2) +
+      Math.pow(c1[1] - c2[1], 2) +
+      Math.pow(c1[2] - c2[2], 2)
+  );
+};
+
+const generateMaskForGroup = (
+  group: SegmentGroup,
+  imageData: ImageData,
+  naturalWidth: number,
+  naturalHeight: number,
+  settings: MagicWandSettings,
+  existingMask?: Uint8Array
+): Uint8Array => {
+  const { contiguous, colorSpaces } = settings;
+  const mask = new Uint8Array(naturalWidth * naturalHeight);
+  const data = imageData.data;
+
+  const visited = new Uint8Array(naturalWidth * naturalHeight);
+  const queue: [number, number][] = [];
+  const startColors: {
+    colors: Record<string, number[]>;
+    tolerances: { rgb: number; hsv: number; lab: number };
+  }[] = [];
+
+  group.points.forEach(point => {
+    const { x: startX, y: startY } = point;
+    if (startX < 0 || startX >= naturalWidth || startY < 0 || startY >= naturalHeight) return;
+
+    const startIdx = (startY * naturalWidth + startX) * 4;
+    const r = data[startIdx], g = data[startIdx+1], b = data[startIdx+2];
+
+    const pointColorSpaces = group.type === 'avoid' ? point.colorSpaces || colorSpaces : colorSpaces;
+    const colorsBySpace: Record<string, number[]> = {};
+    pointColorSpaces.forEach(space => {
+        colorsBySpace[space] = convertColor(r, g, b, space);
+    });
+
+    startColors.push({ colors: colorsBySpace, tolerances: point.tolerances });
+    
+    const startIndex = startY * naturalWidth + startX;
+    if (visited[startIndex] === 0 && (!existingMask || existingMask[startIndex] === 0)) {
+        queue.push([startX, startY]);
+        visited[startIndex] = 1;
+    }
+  });
+
+  const processPixel = (x: number, y: number) => {
+      const index = y * naturalWidth + x;
+      if (visited[index] === 1 || (existingMask && existingMask[index] === 1)) return;
+
+      const dataIndex = index * 4;
+      const r = data[dataIndex], g = data[dataIndex+1], b = data[dataIndex+2];
+      
+      let isSimilar = false;
+      for (const startColor of startColors) {
+          const pointColorSpaces = Object.keys(startColor.colors);
+          for (const space of pointColorSpaces) {
+              const pixelColor = convertColor(r, g, b, space);
+              const distance = getDistance(startColor.colors[space], pixelColor, space);
+              const tolerance = (startColor.tolerances as any)[space];
+              if (distance <= tolerance) {
+                  isSimilar = true;
+                  break;
+              }
+          }
+          if(isSimilar) break;
+      }
+      
+      if (isSimilar) {
+          visited[index] = 1;
+          if (contiguous) {
+            queue.push([x, y]);
+          }
+          mask[index] = 1;
+      }
+  };
+
+  if (contiguous) {
+      let head = 0;
+      while (head < queue.length) {
+          const [x, y] = queue[head++]!;
+          mask[y * naturalWidth + x] = 1;
+
+          const neighbors = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]];
+          for (const [nx, ny] of neighbors) {
+              if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
+                  processPixel(nx, ny);
+              }
+          }
+      }
+  } else {
+      for (let y = 0; y < naturalHeight; y++) {
+          for (let x = 0; x < naturalWidth; x++) {
+              processPixel(x, y);
+          }
+      }
+  }
+  return mask;
+};
+
 export function CanvasArea({
   currentImage,
   setCurrentImage,
@@ -121,61 +252,21 @@ export function CanvasArea({
           naturalHeight
         );
 
-        const { contiguous, colorSpaces } = settings;
-        const imageData = originalImageData.data;
-
         clearCanvas(targetCanvas);
-
-        const convertColor = (
-          r: number,
-          g: number,
-          b: number,
-          space: string
-        ) => {
-          switch (space) {
-            case 'hsv':
-              return colorConverters.rgbToHsv(r, g, b);
-            case 'lab':
-              return colorConverters.rgbToLab(r, g, b);
-            case 'rgb':
-            default:
-              return [r, g, b];
-          }
-        };
-
-        const getDistance = (c1: number[], c2: number[], space: string) => {
-          if (space === 'hsv') {
-            const dh =
-              (Math.min(Math.abs(c1[0] - c2[0]), 360 - Math.abs(c1[0] - c2[0])) /
-                180.0) *
-              100;
-            const ds = Math.abs(c1[1] - c2[1]);
-            const dv = Math.abs(c1[2] - c2[2]);
-            return Math.sqrt(dh * dh + ds * ds + dv * dv);
-          }
-          if (space === 'lab') {
-            return Math.sqrt(
-              Math.pow(c1[0] - c2[0], 2) +
-                Math.pow(c1[1] - c2[1], 2) +
-                Math.pow(c1[2] - c2[2], 2)
-            );
-          }
-          return Math.sqrt(
-            Math.pow(c1[0] - c2[0], 2) +
-              Math.pow(c1[1] - c2[1], 2) +
-              Math.pow(c1[2] - c2[2], 2)
-          );
-        };
-
+        
         let allVisibleGroups = [...allGroups];
         
+        // --- PREVIEW LOGIC ---
         if (isPreview && lastMousePosition && activeTool === 'wand') {
-          let activeGroup = allVisibleGroups.find((g) => g.id === activeGroupId);
+          // Find the active "add" group if it exists
+          let activeGroup = allVisibleGroups.find((g) => g.id === activeGroupId && g.type === 'add');
           let previewGroup: SegmentGroup;
 
-          if (activeGroup && activeGroup.type === 'add') {
-            previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
+          if (activeGroup) {
+            // Create a deep copy for modification
+            previewGroup = JSON.parse(JSON.stringify(activeGroup)); 
           } else {
+             // If no active group, create a new temporary one for preview
              previewGroup = {
               id: 'preview-group',
               name: 'Preview',
@@ -184,352 +275,94 @@ export function CanvasArea({
               points: [],
               visible: true,
             };
-            allVisibleGroups.push(previewGroup);
           }
           
-          const existingPointIndex = previewGroup.points.findIndex(p => p.x === lastMousePosition.x && p.y === lastMousePosition.y);
-          if (existingPointIndex === -1) {
-            previewGroup.points.push({
-              ...lastMousePosition,
-              tolerances: settings.tolerances,
-            });
-          }
+          // Add the current mouse position as a new point for the preview
+          previewGroup.points.push({
+            ...lastMousePosition,
+            tolerances: settings.tolerances,
+          });
 
-          const groupIndex = allVisibleGroups.findIndex(
-            (g) => g.id === previewGroup.id
-          );
+          // Replace the original active group with the modified preview group, or add the new temp group
+          const groupIndex = allVisibleGroups.findIndex((g) => g.id === previewGroup.id);
           if (groupIndex > -1) {
             allVisibleGroups[groupIndex] = previewGroup;
-          } else if (previewGroup.id === 'preview-group') {
+          } else {
             allVisibleGroups.push(previewGroup);
           }
         }
 
-
-        const avoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
-        const avoidGroups = allVisibleGroups.filter(
-            (g) => g.type === 'avoid' && g.visible && g.points.length > 0
-        );
-
-        if (avoidGroups.length > 0) {
-            for (let y = 0; y < naturalHeight; y++) {
-                for (let x = 0; x < naturalWidth; x++) {
-                    const index = y * naturalWidth + x;
-                    const dataIndex = index * 4;
-                    const r = imageData[dataIndex];
-                    const g = imageData[dataIndex + 1];
-                    const b = imageData[dataIndex + 2];
-
-                    for (const group of avoidGroups) {
-                        for (const avoidPoint of group.points) {
-                            const pointColorSpaces = avoidPoint.colorSpaces || colorSpaces;
-                            let isAvoided = false;
-                            for (const space of pointColorSpaces) {
-                                const pixelColor = convertColor(r, g, b, space);
-                                const pointColor = convertColor(
-                                    avoidPoint.color![0],
-                                    avoidPoint.color![1],
-                                    avoidPoint.color![2],
-                                    space
-                                );
-                                const dist = getDistance(pixelColor, pointColor, space);
-                                const tolerance = (avoidPoint.tolerances as any)[space];
-                                if (dist <= tolerance) {
-                                    avoidanceMask[index] = 1;
-                                    isAvoided = true;
-                                    break;
-                                }
-                            }
-                            if (isAvoided) break;
-                        }
-                        if (avoidanceMask[index] === 1) break;
-                    }
-                }
-            }
+        // --- MASK GENERATION ---
+        const combinedAvoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
+        
+        // 1. Generate mask from "avoid" groups
+        const avoidGroups = allVisibleGroups.filter(g => g.type === 'avoid' && g.visible && g.points.length > 0);
+        for(const group of avoidGroups) {
+          const groupMask = generateMaskForGroup(group, originalImageData, naturalWidth, naturalHeight, settings);
+          for(let i = 0; i < groupMask.length; i++) {
+            if(groupMask[i]) combinedAvoidanceMask[i] = 1;
+          }
         }
 
+        // 2. If preventing overlap, generate mask from existing "add" groups
         if (preventOverlap) {
-            const addGroupsToAvoid = allVisibleGroups.filter(
-                (g) => g.type === 'add' && g.visible && g.points.length > 0
-            );
+          const addGroupsToAvoid = allVisibleGroups.filter(g => g.type === 'add' && g.visible && g.points.length > 0);
+           for(const group of addGroupsToAvoid) {
+            // Don't mask against the currently active/preview group itself
+            if (group.id === activeGroupId || group.id === 'preview-group') continue;
 
-            if (addGroupsToAvoid.length > 0) {
-                // Pre-render existing add groups to a temporary mask
-                const existingAddMask = new Uint8Array(naturalWidth * naturalHeight);
-
-                for (const group of addGroupsToAvoid) {
-                    // Don't mask against the currently active group or preview group
-                    if (group.id === activeGroupId || group.id === 'preview-group') continue;
-
-                    const tempMaskCanvas = document.createElement('canvas');
-                    tempMaskCanvas.width = naturalWidth;
-                    tempMaskCanvas.height = naturalHeight;
-                    const tempMaskCtx = tempMaskCanvas.getContext('2d');
-                    if (tempMaskCtx) {
-                      // Use a simplified version of the main logic to just get the mask
-                      // This avoids infinite recursion
-                      const visited = new Uint8Array(naturalWidth * naturalHeight);
-                      const queue: [number, number][] = [];
-                      
-                      group.points.forEach(point => {
-                          const startIndex = point.y * naturalWidth + point.x;
-                          if (visited[startIndex] === 0) {
-                              queue.push([point.x, point.y]);
-                              visited[startIndex] = 1;
-                          }
-                      });
-
-                      const startColors: { colors: Record<string, number[]>, tolerances: any }[] = group.points.map(p => {
-                          const startIdx = (p.y * naturalWidth + p.x) * 4;
-                          const r = imageData[startIdx], g = imageData[startIdx+1], b = imageData[startIdx+2];
-                          const colorsBySpace: Record<string, number[]> = {};
-                          colorSpaces.forEach(space => {
-                              colorsBySpace[space] = convertColor(r, g, b, space);
-                          });
-                          return { colors: colorsBySpace, tolerances: p.tolerances };
-                      });
-                      
-                      let head = 0;
-                      while(head < queue.length) {
-                          const [x, y] = queue[head++]!;
-                          const neighbors = [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]];
-                          for(const [nx, ny] of neighbors) {
-                              if (nx >= 0 && nx < naturalWidth && ny >= 0 && ny < naturalHeight) {
-                                  const nIndex = ny * naturalWidth + nx;
-                                  if (visited[nIndex] === 0) {
-                                      const dataIndex = nIndex * 4;
-                                      const r = imageData[dataIndex], g = imageData[dataIndex+1], b = imageData[dataIndex+2];
-                                      let isSimilar = false;
-                                      for (const startColor of startColors) {
-                                          for (const space of Object.keys(startColor.colors)) {
-                                              const pixelColor = convertColor(r, g, b, space);
-                                              const distance = getDistance(startColor.colors[space], pixelColor, space);
-                                              if (distance <= (startColor.tolerances as any)[space]) {
-                                                  isSimilar = true;
-                                                  break;
-                                              }
-                                          }
-                                          if (isSimilar) break;
-                                      }
-                                      if (isSimilar) {
-                                          visited[nIndex] = 1;
-                                          avoidanceMask[nIndex] = 1;
-                                          if (contiguous) {
-                                            queue.push([nx, ny]);
-                                          }
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                      if (!contiguous) {
-                         for (let i = 0; i < naturalWidth * naturalHeight; i++) {
-                            if (visited[i] === 0) {
-                               const dataIndex = i * 4;
-                               const r = imageData[dataIndex], g = imageData[dataIndex+1], b = imageData[dataIndex+2];
-                               let isSimilar = false;
-                               for (const startColor of startColors) {
-                                   for (const space of Object.keys(startColor.colors)) {
-                                      const pixelColor = convertColor(r, g, b, space);
-                                      const distance = getDistance(startColor.colors[space], pixelColor, space);
-                                       if (distance <= (startColor.tolerances as any)[space]) {
-                                           isSimilar = true;
-                                           break;
-                                       }
-                                   }
-                                   if (isSimilar) break;
-                               }
-                                if (isSimilar) {
-                                    avoidanceMask[i] = 1;
-                                }
-                            }
-                         }
-                      }
-                    }
-                }
+            const groupMask = generateMaskForGroup(group, originalImageData, naturalWidth, naturalHeight, settings);
+            for(let i = 0; i < groupMask.length; i++) {
+              if(groupMask[i]) combinedAvoidanceMask[i] = 1;
             }
+           }
         }
-
+        
+        // --- RENDER GROUPS ---
         targetCtx.clearRect(0,0, targetCanvas.width, targetCanvas.height);
+        const groupsToRender = allVisibleGroups.filter((g) => g.visible && g.points.length > 0);
 
-        allVisibleGroups
-          .filter((g) => g.visible && g.points.length > 0)
-          .forEach((group) => {
-            // For add groups, check if we're overlapping other add groups
-            const currentAvoidanceMask = (group.type === 'add' && preventOverlap) || group.type === 'avoid'
-                ? avoidanceMask
-                : new Uint8Array(naturalWidth * naturalHeight); // Empty mask
-            
-            // If preventing overlap, an "add" group should not mask itself in its own calculation
-            const selfMaskingAvoidance = new Uint8Array(currentAvoidanceMask);
-            if(group.type === 'add' && preventOverlap && group.id !== activeGroupId && group.id !== 'preview-group') {
-                // this is complex, for now we just use the global mask
-            }
+        groupsToRender.forEach((group) => {
+          if (group.type === 'avoid') return; // Don't render avoid groups themselves
 
+          const mask = generateMaskForGroup(
+            group,
+            originalImageData,
+            naturalWidth,
+            naturalHeight,
+            settings,
+            combinedAvoidanceMask
+          );
 
-            const maskImageData = targetCtx.createImageData(
-              targetCanvas.width,
-              targetCanvas.height
-            );
-            const maskData = maskImageData.data;
-            const visited = new Uint8Array(naturalWidth * naturalHeight);
-            const queue: [number, number][] = [];
-            const startColors: {
-              colors: Record<string, number[]>;
-              tolerances: { rgb: number; hsv: number; lab: number };
-            }[] = [];
+          const maskImageData = targetCtx.createImageData(
+            targetCanvas.width,
+            targetCanvas.height
+          );
+          const maskData = maskImageData.data;
 
-            group.points.forEach((point) => {
-              const { x: startX, y: startY } = point;
-              if (startX < 0 || startX >= naturalWidth || startY < 0 || startY >= naturalHeight) return;
-
-              const startIdx = (startY * naturalWidth + startX) * 4;
-              const r = imageData[startIdx];
-              const g = imageData[startIdx + 1];
-              const b = imageData[startIdx + 2];
-
-              const pointColorSpaces =
-                group.type === 'avoid'
-                  ? point.colorSpaces || colorSpaces
-                  : colorSpaces;
-
-              const colorsBySpace: Record<string, number[]> = {};
-              pointColorSpaces.forEach((space) => {
-                colorsBySpace[space] = convertColor(r, g, b, space);
-              });
-
-              startColors.push({
-                colors: colorsBySpace,
-                tolerances: point.tolerances,
-              });
-
-              const startIndex = startY * naturalWidth + startX;
-              if (visited[startIndex] === 0 && selfMaskingAvoidance[startIndex] === 0) {
-                queue.push([startX, startY]);
-                visited[startIndex] = 1;
-              }
-            });
-
-            const processPixel = (x: number, y: number) => {
+          for (let y = 0; y < naturalHeight; y++) {
+            for (let x = 0; x < naturalWidth; x++) {
               const index = y * naturalWidth + x;
-              if (visited[index] || (group.type === 'add' && selfMaskingAvoidance[index]))
-                return;
-
-              const dataIndex = index * 4;
-              const r = imageData[dataIndex];
-              const g = imageData[dataIndex + 1];
-              const b = imageData[dataIndex + 2];
-
-              let isSimilar = false;
-              for (const startColor of startColors) {
-                const pointColorSpaces = Object.keys(startColor.colors);
-
-                for (const space of pointColorSpaces) {
-                  const pixelColor = convertColor(r, g, b, space);
-                  const distance = getDistance(startColor.colors[space], pixelColor, space);
-                  const tolerance = (startColor.tolerances as any)[space];
-
-                  if (distance <= tolerance) {
-                    isSimilar = true;
-                    break;
-                  }
-                }
-                if (isSimilar) break;
-              }
-
-              if (isSimilar) {
-                visited[index] = 1;
-                if (contiguous) {
-                  queue.push([x, y]);
-                }
-                const renderX = Math.floor(
-                  x * (targetCanvas.width / naturalWidth)
-                );
-                const renderY = Math.floor(
-                  y * (targetCanvas.height / naturalHeight)
-                );
-                const maskDataIndex =
-                  (renderY * targetCanvas.width + renderX) * 4;
-
-                const hsla = group.color.match(
-                  /hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/
-                );
+              if (mask[index] === 1) {
+                const renderX = Math.floor(x * (targetCanvas.width / naturalWidth));
+                const renderY = Math.floor(y * (targetCanvas.height / naturalHeight));
+                const maskDataIndex = (renderY * targetCanvas.width + renderX) * 4;
+                
+                const hsla = group.color.match(/hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/);
                 if (hsla) {
                   const [, h, s, l, a] = hsla;
-                  const [r, g, b] = hslToRgb(
-                    parseInt(h),
-                    parseInt(s),
-                    parseInt(l)
-                  );
+                  const [r, g, b] = hslToRgb(parseInt(h), parseInt(s), parseInt(l));
                   maskData[maskDataIndex] = r;
                   maskData[maskDataIndex + 1] = g;
                   maskData[maskDataIndex + 2] = b;
                   maskData[maskDataIndex + 3] = parseFloat(a) * 255;
-                }
-              }
-            };
-
-            if (contiguous) {
-              let head = 0;
-              while (head < queue.length) {
-                const [x, y] = queue[head++]!;
-
-                if (group.type === 'add' && selfMaskingAvoidance[y * naturalWidth + x] && !(group.id === activeGroupId || group.id === 'preview-group') ) {
-                  continue;
-                }
-                
-                const renderX = Math.floor(
-                  x * (targetCanvas.width / naturalWidth)
-                );
-                const renderY = Math.floor(
-                  y * (targetCanvas.height / naturalHeight)
-                );
-                const maskDataIndex =
-                  (renderY * targetCanvas.width + renderX) * 4;
-                
-                const hsla = group.color.match(
-                  /hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/
-                );
-                if (hsla) {
-                  const [, h, s, l, a] = hsla;
-                  const [r, g, b] = hslToRgb(
-                    parseInt(h),
-                    parseInt(s),
-                    parseInt(l)
-                  );
-                  maskData[maskDataIndex] = r;
-                  maskData[maskDataIndex + 1] = g;
-                  maskData[maskDataIndex + 2] = b;
-                  maskData[maskDataIndex + 3] = parseFloat(a) * 255;
-                }
-
-                const neighbors = [
-                  [x, y - 1],
-                  [x, y + 1],
-                  [x - 1, y],
-                  [x + 1, y],
-                ];
-
-                for (const [nx, ny] of neighbors) {
-                  if (
-                    nx >= 0 &&
-                    nx < naturalWidth &&
-                    ny >= 0 &&
-                    ny < naturalHeight
-                  ) {
-                    processPixel(nx, ny);
-                  }
-                }
-              }
-            } else {
-              for (let y = 0; y < naturalHeight; y++) {
-                for (let x = 0; x < naturalWidth; x++) {
-                  processPixel(x, y);
                 }
               }
             }
-            targetCtx.putImageData(maskImageData, 0, 0);
-          });
+          }
+          targetCtx.putImageData(maskImageData, 0, 0);
+        });
+
       } catch (e: any) {
         if (e.message.includes('cross-origin')) {
           toast({
@@ -725,14 +558,27 @@ export function CanvasArea({
         
         const pixel = selectionCtx.getImageData(coords.x * scaleX, coords.y * scaleY, 1, 1).data;
         if (pixel[3] > 0) { // Check if the pixel is not transparent
-            // Find which group this pixel belongs to
-            // This is a simplified check. A more robust way would be to re-run detection for each group.
-            for (const group of segmentGroups) {
-                if (!group.visible) continue;
-                // A better check would be needed here, maybe storing the masks
-                // For now, we'll just set the first visible group as active
-                 setActiveGroupId(group.id);
-                 return;
+            // Find which group this pixel belongs to.
+            // This is a simplified check. A more robust way would be to re-run detection for each group and see which one contains the pixel.
+            // For now, we can try to find a group whose color matches the pixel color.
+            const pixelColor = [pixel[0], pixel[1], pixel[2]];
+
+            for (const group of segmentGroups.filter(g => g.visible && g.type === 'add').reverse()) {
+                const hsla = group.color.match(/hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/);
+                if (hsla) {
+                    const [, h, s, l] = hsla;
+                    const groupRgb = hslToRgb(parseInt(h), parseInt(s), parseInt(l));
+                    if(groupRgb[0] === pixelColor[0] && groupRgb[1] === pixelColor[1] && groupRgb[2] === pixelColor[2]){
+                        setActiveGroupId(group.id);
+                        return;
+                    }
+                }
+            }
+            // As a fallback if color match fails
+            const activeGroup = segmentGroups.find(g => g.visible && g.type ==='add');
+            if (activeGroup) {
+              setActiveGroupId(activeGroup.id);
+              return;
             }
         }
     }
@@ -981,3 +827,5 @@ export function CanvasArea({
     </Card>
   );
 }
+
+    
