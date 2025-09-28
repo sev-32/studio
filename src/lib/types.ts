@@ -4,11 +4,11 @@ export interface MagicWandSettings {
   tolerances: {
     rgb: number;
     hsv: number;
--   lab: number;
-+   lab: number;  
+    lab: number;
   };
   contiguous: boolean;
   colorSpaces: string[];
+  sampleSize: number;
 }
 
 export interface MagicLassoSettings {

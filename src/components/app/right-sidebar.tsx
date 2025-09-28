@@ -220,6 +220,31 @@ function MagicWandSettingsComponent({
       </SidebarGroupLabel>
       <div className="space-y-6 p-2">
         <div className="space-y-3">
+          <Label
+            htmlFor="sample-size"
+            className={disabled ? 'text-muted-foreground' : ''}
+          >
+            Sample Size
+          </Label>
+          <div className="flex items-center gap-4">
+            <Slider
+              id="sample-size"
+              value={[settings.sampleSize]}
+              onValueChange={(value) =>
+                setSettings((s) => ({ ...s, sampleSize: value[0] }))
+              }
+              min={1}
+              max={50}
+              step={1}
+              disabled={disabled}
+            />
+            <span className="w-12 text-right text-sm text-muted-foreground">
+              {settings.sampleSize}px
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
           <Label className={disabled ? 'text-muted-foreground' : ''}>
             Color Space
           </Label>

@@ -2,8 +2,8 @@
 import { SidebarGroup, SidebarGroupLabel } from '../ui/sidebar';
 
 export function AnalyticsPanel({ pixelData }: { pixelData: any }) {
-  const gridSize = 5;
-  const cellSize = 16; // 1rem
+  const gridSize = 9;
+  const cellSize = 12;
 
   const renderPixelGrid = () => {
     if (!pixelData?.pixelGrid) {

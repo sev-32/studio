@@ -31,6 +31,7 @@ export function AppLayout() {
     },
     contiguous: true,
     colorSpaces: ['rgb'],
+    sampleSize: 5,
   });
   const [lassoSettings, setLassoSettings] = useState<MagicLassoSettings>({
     nodeDropTime: 200,

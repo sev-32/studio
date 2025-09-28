@@ -72,7 +72,6 @@ export function CanvasArea({
     x: number;
     y: number;
   } | null>(null);
-  const [hoverRadius, setHoverRadius] = useState(5); // New state for search area size
 
   const clearCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas) return;
@@ -486,7 +485,7 @@ export function CanvasArea({
 
     const renderX = lastMousePosition.x * scaleX;
     const renderY = lastMousePosition.y * scaleY;
-    const renderRadius = hoverRadius * scaleX;
+    const renderRadius = wandSettings.sampleSize * scaleX;
 
     ctx.beginPath();
     ctx.arc(renderX, renderY, renderRadius, 0, 2 * Math.PI);
@@ -499,7 +498,7 @@ export function CanvasArea({
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.stroke();
 
-  }, [lastMousePosition, hoverRadius])
+  }, [lastMousePosition, wandSettings.sampleSize])
 
   const runPreview = useCallback(() => {
     if (activeTool !== 'wand' || !previewCanvasRef.current) {
@@ -547,7 +546,7 @@ export function CanvasArea({
           tempCtx.drawImage(image, 0, 0);
 
           const pixel = tempCtx.getImageData(coords.x, coords.y, 1, 1).data;
-          const pixelGridSize = 5;
+          const pixelGridSize = 9;
           const neighborhood = tempCtx.getImageData(coords.x - Math.floor(pixelGridSize/2), coords.y - Math.floor(pixelGridSize/2), pixelGridSize, pixelGridSize);
 
           onPixelHover({
@@ -636,7 +635,10 @@ export function CanvasArea({
     const change = event.deltaY < 0 ? 1 : -1;
   
     if (event.altKey) {
-      setHoverRadius((prev) => Math.max(1, Math.min(100, prev + change)));
+       setWandSettings((prev) => ({
+        ...prev,
+        sampleSize: Math.max(1, Math.min(100, prev.sampleSize + change)),
+      }));
       return;
     }
   
@@ -648,7 +650,7 @@ export function CanvasArea({
             Math.pow(p.x - lastMousePosition.x, 2) +
               Math.pow(p.y - lastMousePosition.y, 2)
           );
-          if (distance < hoverRadius) {
+          if (distance < wandSettings.sampleSize) {
             pointFound = true;
             const newTolerances = { ...p.tolerances };
             wandSettings.colorSpaces.forEach((space) => {
