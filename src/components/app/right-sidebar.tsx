@@ -46,6 +46,8 @@ interface RightSidebarProps {
   setLayers: Dispatch<SetStateAction<Layer[]>>;
   onCopyToLayer: () => void;
   hoveredPixelData: any;
+  ignoreAvoid: boolean;
+  setIgnoreAvoid: Dispatch<SetStateAction<boolean>>;
 }
 
 export function RightSidebar({
@@ -63,6 +65,8 @@ export function RightSidebar({
   setLayers,
   onCopyToLayer,
   hoveredPixelData,
+  ignoreAvoid,
+  setIgnoreAvoid,
 }: RightSidebarProps) {
   return (
     <SidebarContent>
@@ -89,6 +93,14 @@ export function RightSidebar({
                 onCheckedChange={setAutoDetectMode}
               />
             </div>
+             <div className="flex items-center justify-between p-2">
+              <Label htmlFor="ignore-avoid-groups">Ignore Avoid Groups</Label>
+              <Switch
+                id="ignore-avoid-groups"
+                checked={ignoreAvoid}
+                onCheckedChange={setIgnoreAvoid}
+              />
+            </div>
           </SidebarGroup>
           <SidebarSeparator />
           {activeTool === 'wand' && (
@@ -108,6 +120,63 @@ export function RightSidebar({
         </>
       )}
     </SidebarContent>
+  );
+}
+
+function SegmentGroupList({
+  title,
+  groups,
+  toggleVisibility,
+  deleteGroup,
+}: {
+  title: string;
+  groups: SegmentGroup[];
+  toggleVisibility: (id: string) => void;
+  deleteGroup: (id: string) => void;
+}) {
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-muted-foreground px-2 mb-1">
+        {title}
+      </h4>
+      <div className="space-y-1">
+        {groups.map((group) => (
+          <div
+            key={group.id}
+            className="flex items-center justify-between p-2 rounded-md bg-secondary"
+          >
+            <div
+              className="w-4 h-4 rounded-full mr-2"
+              style={{ backgroundColor: group.color }}
+            />
+            <span className="text-sm flex-1">{group.name}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => toggleVisibility(group.id)}
+            >
+              {group.visible ? (
+                <Eye className="h-4 w-4" />
+              ) : (
+                <EyeOff className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => deleteGroup(group.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -131,6 +200,9 @@ function LayersPanel({
   const deleteGroup = (id: string) => {
     setSegmentGroups(segmentGroups.filter((g) => g.id !== id));
   };
+
+  const addGroups = segmentGroups.filter((g) => g.type === 'add');
+  const avoidGroups = segmentGroups.filter((g) => g.type === 'avoid');
 
   return (
     <SidebarGroup>
@@ -156,44 +228,27 @@ function LayersPanel({
           </Button>
         </div>
         <ScrollArea className="h-48">
-          <div className="space-y-2">
-            {segmentGroups.length === 0 && (
+          <div className="space-y-4">
+            {segmentGroups.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">
                 No segment groups yet.
               </p>
-            )}
-            {segmentGroups.map((group) => (
-              <div
-                key={group.id}
-                className="flex items-center justify-between p-2 rounded-md bg-secondary"
-              >
-                <div
-                  className="w-4 h-4 rounded-full mr-2"
-                  style={{ backgroundColor: group.color }}
+            ) : (
+              <>
+                <SegmentGroupList
+                  title="Add Groups"
+                  groups={addGroups}
+                  toggleVisibility={toggleVisibility}
+                  deleteGroup={deleteGroup}
                 />
-                <span className="text-sm flex-1">{group.name}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => toggleVisibility(group.id)}
-                >
-                  {group.visible ? (
-                    <Eye className="h-4 w-4" />
-                  ) : (
-                    <EyeOff className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => deleteGroup(group.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                <SegmentGroupList
+                  title="Avoid Groups"
+                  groups={avoidGroups}
+                  toggleVisibility={toggleVisibility}
+                  deleteGroup={deleteGroup}
+                />
+              </>
+            )}
           </div>
         </ScrollArea>
       </div>

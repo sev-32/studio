@@ -23,6 +23,7 @@ export function AppLayout() {
   const [activeTool, setActiveTool] = useState<Tool>('wand');
   const [currentImage, setCurrentImage] = useState(PlaceHolderImages[0]);
   const [autoDetectMode, setAutoDetectMode] = useState(true);
+  const [ignoreAvoid, setIgnoreAvoid] = useState(false);
   const [wandSettings, setWandSettings] = useState<MagicWandSettings>({
     tolerances: {
       rgb: 30,
@@ -105,6 +106,7 @@ export function AppLayout() {
               onCopyToLayer={handleCopyToLayer}
               onClearPoints={handleClearPoints}
               onPixelHover={setHoveredPixelData}
+              ignoreAvoid={ignoreAvoid}
             />
           </main>
         </SidebarProvider>
@@ -129,6 +131,8 @@ export function AppLayout() {
                 console.log('Copy to layer clicked');
               }}
               hoveredPixelData={hoveredPixelData}
+              ignoreAvoid={ignoreAvoid}
+              setIgnoreAvoid={setIgnoreAvoid}
             />
           </Sidebar>
         </SidebarProvider>

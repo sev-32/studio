@@ -45,6 +45,7 @@ interface CanvasAreaProps {
   onCopyToLayer: (imageData: ImageData) => void;
   onClearPoints: () => void;
   onPixelHover: (data: any) => void;
+  ignoreAvoid: boolean;
 }
 
 export function CanvasArea({
@@ -63,6 +64,7 @@ export function CanvasArea({
   onCopyToLayer,
   onClearPoints,
   onPixelHover,
+  ignoreAvoid,
 }: CanvasAreaProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const selectionCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -171,10 +173,10 @@ export function CanvasArea({
           let activeGroup = allVisibleGroups.find((g) => g.id === activeGroupId);
           let previewGroup: SegmentGroup;
 
-          if (activeGroup) {
+          if (activeGroup && activeGroup.type === 'add') {
             previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
           } else {
-            previewGroup = {
+             previewGroup = {
               id: 'preview-group',
               name: 'Preview',
               type: 'add',
@@ -184,61 +186,68 @@ export function CanvasArea({
             };
             allVisibleGroups.push(previewGroup);
           }
-
-          previewGroup.points.push({
-            ...lastMousePosition,
-            tolerances: settings.tolerances,
-          });
+          
+          const existingPointIndex = previewGroup.points.findIndex(p => p.x === lastMousePosition.x && p.y === lastMousePosition.y);
+          if (existingPointIndex === -1) {
+            previewGroup.points.push({
+              ...lastMousePosition,
+              tolerances: settings.tolerances,
+            });
+          }
 
           const groupIndex = allVisibleGroups.findIndex(
             (g) => g.id === previewGroup.id
           );
           if (groupIndex > -1) {
             allVisibleGroups[groupIndex] = previewGroup;
+          } else if (previewGroup.id === 'preview-group') {
+            allVisibleGroups.push(previewGroup);
           }
         }
 
 
         const avoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
-        const avoidGroups = allVisibleGroups.filter(
-          (g) => g.type === 'avoid' && g.visible && g.points.length > 0
-        );
+        if (!ignoreAvoid) {
+            const avoidGroups = allVisibleGroups.filter(
+                (g) => g.type === 'avoid' && g.visible && g.points.length > 0
+            );
 
-        if (avoidGroups.length > 0) {
-          for (let y = 0; y < naturalHeight; y++) {
-            for (let x = 0; x < naturalWidth; x++) {
-              const index = y * naturalWidth + x;
-              const dataIndex = index * 4;
-              const r = imageData[dataIndex];
-              const g = imageData[dataIndex + 1];
-              const b = imageData[dataIndex + 2];
+            if (avoidGroups.length > 0) {
+                for (let y = 0; y < naturalHeight; y++) {
+                    for (let x = 0; x < naturalWidth; x++) {
+                        const index = y * naturalWidth + x;
+                        const dataIndex = index * 4;
+                        const r = imageData[dataIndex];
+                        const g = imageData[dataIndex + 1];
+                        const b = imageData[dataIndex + 2];
 
-              for (const group of avoidGroups) {
-                for (const avoidPoint of group.points) {
-                  const pointColorSpaces = avoidPoint.colorSpaces || colorSpaces;
-                  let isAvoided = false;
-                  for (const space of pointColorSpaces) {
-                    const pixelColor = convertColor(r, g, b, space);
-                    const pointColor = convertColor(
-                      avoidPoint.color![0],
-                      avoidPoint.color![1],
-                      avoidPoint.color![2],
-                      space
-                    );
-                    const dist = getDistance(pixelColor, pointColor, space);
-                    const tolerance = (avoidPoint.tolerances as any)[space];
-                    if (dist <= tolerance) {
-                      avoidanceMask[index] = 1;
-                      isAvoided = true;
-                      break;
+                        for (const group of avoidGroups) {
+                            for (const avoidPoint of group.points) {
+                                const pointColorSpaces = avoidPoint.colorSpaces || colorSpaces;
+                                let isAvoided = false;
+                                for (const space of pointColorSpaces) {
+                                    const pixelColor = convertColor(r, g, b, space);
+                                    const pointColor = convertColor(
+                                        avoidPoint.color![0],
+                                        avoidPoint.color![1],
+                                        avoidPoint.color![2],
+                                        space
+                                    );
+                                    const dist = getDistance(pixelColor, pointColor, space);
+                                    const tolerance = (avoidPoint.tolerances as any)[space];
+                                    if (dist <= tolerance) {
+                                        avoidanceMask[index] = 1;
+                                        isAvoided = true;
+                                        break;
+                                    }
+                                }
+                                if (isAvoided) break;
+                            }
+                            if (avoidanceMask[index] === 1) break;
+                        }
                     }
-                  }
-                  if (isAvoided) break;
                 }
-                if (avoidanceMask[index] === 1) break;
-              }
             }
-          }
         }
         targetCtx.clearRect(0,0, targetCanvas.width, targetCanvas.height);
 
@@ -356,7 +365,6 @@ export function CanvasArea({
                   continue;
                 }
                 
-
                 const renderX = Math.floor(
                   x * (targetCanvas.width / naturalWidth)
                 );
@@ -427,7 +435,7 @@ export function CanvasArea({
         }
       }
     },
-    [toast, lastMousePosition, activeTool, activeGroupId]
+    [toast, lastMousePosition, activeTool, activeGroupId, ignoreAvoid]
   );
 
   function hslToRgb(h: number, s: number, l: number) {
