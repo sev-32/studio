@@ -331,7 +331,7 @@ export function CanvasArea({
               while (head < queue.length) {
                 const [x, y] = queue[head++]!;
 
-                if (group.type === 'add' && avoidanceMask[index]) continue;
+                if (group.type === 'add' && avoidanceMask[y * naturalWidth + x]) continue;
 
                 const renderX = Math.floor(
                   x * (targetCanvas.width / naturalWidth)
@@ -341,8 +341,7 @@ export function CanvasArea({
                 );
                 const maskDataIndex =
                   (renderY * targetCanvas.width + renderX) * 4;
-                const index = y * naturalWidth + x;
-
+                
                 const hsla = group.color.match(
                   /hsla\((\d+),\s*(\d+)%,\s*(\d+)%,\s*([\d.]+)\)/
                 );
