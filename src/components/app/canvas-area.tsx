@@ -166,19 +166,38 @@ export function CanvasArea({
         };
 
         let allVisibleGroups = [...allGroups];
-        const activeGroup = allVisibleGroups.find((g) => g.id === activeGroupId);
+        
+        if (isPreview && lastMousePosition && activeTool === 'wand') {
+          let activeGroup = allVisibleGroups.find((g) => g.id === activeGroupId);
+          let previewGroup: SegmentGroup;
 
-        if (isPreview && lastMousePosition && activeTool === 'wand' && activeGroup) {
-          const previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
+          if (activeGroup) {
+            previewGroup = JSON.parse(JSON.stringify(activeGroup)); // Deep copy
+          } else {
+            previewGroup = {
+              id: 'preview-group',
+              name: 'Preview',
+              type: 'add',
+              color: 'hsla(200, 80%, 50%, 0.5)',
+              points: [],
+              visible: true,
+            };
+            allVisibleGroups.push(previewGroup);
+          }
+
           previewGroup.points.push({
             ...lastMousePosition,
             tolerances: settings.tolerances,
           });
+
           const groupIndex = allVisibleGroups.findIndex(
-            (g) => g.id === activeGroupId
+            (g) => g.id === previewGroup.id
           );
-          if (groupIndex > -1) allVisibleGroups[groupIndex] = previewGroup;
+          if (groupIndex > -1) {
+            allVisibleGroups[groupIndex] = previewGroup;
+          }
         }
+
 
         const avoidanceMask = new Uint8Array(naturalWidth * naturalHeight);
         const avoidGroups = allVisibleGroups.filter(
@@ -240,6 +259,8 @@ export function CanvasArea({
 
             group.points.forEach((point) => {
               const { x: startX, y: startY } = point;
+              if (startX < 0 || startX >= naturalWidth || startY < 0 || startY >= naturalHeight) return;
+
               const startIdx = (startY * naturalWidth + startX) * 4;
               const r = imageData[startIdx];
               const g = imageData[startIdx + 1];
@@ -331,7 +352,10 @@ export function CanvasArea({
               while (head < queue.length) {
                 const [x, y] = queue[head++]!;
 
-                if (group.type === 'add' && avoidanceMask[y * naturalWidth + x]) continue;
+                if (group.type === 'add' && avoidanceMask[y * naturalWidth + x]) {
+                  continue;
+                }
+                
 
                 const renderX = Math.floor(
                   x * (targetCanvas.width / naturalWidth)
@@ -500,14 +524,8 @@ export function CanvasArea({
   }, [lastMousePosition, wandSettings.sampleSize])
 
   const runPreview = useCallback(() => {
-    if (activeTool !== 'wand' || !previewCanvasRef.current) {
+    if (activeTool !== 'wand' || !previewCanvasRef.current || !lastMousePosition) {
       clearCanvas(previewCanvasRef.current);
-      return;
-    }
-
-    const activeGroup = segmentGroups.find(g => g.id === activeGroupId);
-    if (!activeGroup) {
-      drawHoverPreview();
       return;
     }
 
@@ -522,8 +540,7 @@ export function CanvasArea({
     wandSettings,
     segmentGroups,
     performMagicWand,
-    activeGroupId,
-    drawHoverPreview
+    lastMousePosition,
   ]);
 
   useEffect(() => {
